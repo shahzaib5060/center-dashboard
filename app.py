@@ -338,16 +338,13 @@ with st.sidebar:
     st.markdown(f"<h3 style='color:{NAVY};margin-bottom:0'>Center Repository</h3>", unsafe_allow_html=True)
     st.caption("Chughtai Lab · Operations Excellence")
 
-    upload = st.file_uploader("Or load an exported .xlsx", type=["xlsx"], help="Use when the live link isn't set up.")
     if st.button("🔄 Refresh now", width="stretch"):
         st.cache_data.clear()
         st.rerun()
 
 source_error = None
 try:
-    if upload is not None:
-        centers_raw, repo_raw, source = load_from_upload(upload)
-    elif os.environ.get("CENTER_REPO_XLSX"):  # optional: point at a local export
+    if os.environ.get("CENTER_REPO_XLSX"):  # optional: point at a local export
         centers_raw, repo_raw, source = load_from_upload(os.environ["CENTER_REPO_XLSX"])
     else:
         centers_raw, repo_raw, source = load_from_google()
@@ -357,9 +354,9 @@ except Exception as e:  # noqa: BLE001
 
 if source_error is not None or centers_raw is None:
     st.error(
-        "Couldn't read the sheet. Either add a service account in `.streamlit/secrets.toml` "
-        "(see README), set the sheet to *Anyone with the link → Viewer*, or upload an exported .xlsx "
-        f"in the sidebar.\n\nDetails: `{source_error}`"
+        "Couldn't read the Google Sheet. Check that the service-account key is in the app's Secrets "
+        "and that the sheet is shared with the service-account email as Viewer, then click Refresh now."
+        f"\n\nDetails: `{source_error}`"
     )
     st.stop()
 
