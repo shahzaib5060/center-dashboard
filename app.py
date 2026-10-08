@@ -100,6 +100,69 @@ st.markdown(
 px.defaults.template = "plotly_white"
 
 
+def secret(key, default=None):
+    """Read a Streamlit secret without crashing when no secrets file exists."""
+    try:
+        return st.secrets[key] if key in st.secrets else default
+    except Exception:  # noqa: BLE001
+        return default
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Login
+#   Users live in Streamlit Secrets, never in the code:
+#       [users]
+#       shahzaib = "StrongPassword1"
+#       amber    = "AnotherPassword2"
+#   If no [users] section exists, the dashboard stays locked.
+# ─────────────────────────────────────────────────────────────────────────────
+MAX_ATTEMPTS = 5
+
+
+def check_login() -> bool:
+    import hmac
+
+    if st.session_state.get("auth_user"):
+        return True
+
+    users = dict(secret("users", {}) or {})
+
+    st.markdown(
+        f"""<div class="cl-header" style="max-width:460px;margin:60px auto 18px auto;text-align:center">
+        <h1>Center Repository</h1><p>Chughtai Lab · Operations Excellence</p></div>""",
+        unsafe_allow_html=True,
+    )
+    _, mid, _ = st.columns([1, 1.2, 1])
+    with mid:
+        if not users:
+            st.error("No users are set up yet. Add a [users] section in the app's Secrets.")
+            return False
+        attempts = st.session_state.get("auth_attempts", 0)
+        if attempts >= MAX_ATTEMPTS:
+            st.error("Too many wrong attempts. Close this tab and try again later.")
+            return False
+        with st.form("login"):
+            u = st.text_input("Username").strip().lower()
+            p = st.text_input("Password", type="password")
+            ok = st.form_submit_button("Log in", width="stretch", type="primary")
+        if ok:
+            expected = {k.lower(): str(v) for k, v in users.items()}.get(u)
+            if expected is not None and hmac.compare_digest(p.encode(), expected.encode()):
+                st.session_state["auth_user"] = u
+                st.session_state.pop("auth_attempts", None)
+                st.rerun()
+            else:
+                st.session_state["auth_attempts"] = attempts + 1
+                left = MAX_ATTEMPTS - attempts - 1
+                st.error(f"Wrong username or password. {left} attempt(s) left.")
+    return False
+
+
+if not check_login():
+    st.stop()
+
+
 def style_fig(fig: go.Figure, height: int = 380) -> go.Figure:
     fig.update_layout(
         height=height,
@@ -137,16 +200,16 @@ def _frame_from_values(values: list[list[str]]) -> pd.DataFrame:
 @st.cache_data(ttl=REFRESH_SECONDS, show_spinner="Reading the live sheet…")
 def load_from_google() -> tuple[pd.DataFrame, pd.DataFrame, str]:
     """Live read. Uses a service account if configured, else the public CSV export."""
-    if "gcp_json" in st.secrets or "gcp_service_account" in st.secrets:
+    if secret("gcp_json") or secret("gcp_service_account"):
         import json
         import gspread
 
-        if "gcp_json" in st.secrets:  # whole JSON key pasted as one block
-            creds = json.loads(st.secrets["gcp_json"])
+        if secret("gcp_json"):  # whole JSON key pasted as one block
+            creds = json.loads(secret("gcp_json"))
         else:
-            creds = dict(st.secrets["gcp_service_account"])
+            creds = dict(secret("gcp_service_account"))
         gc = gspread.service_account_from_dict(creds)
-        sh = gc.open_by_key(st.secrets.get("sheet_id", SHEET_ID))
+        sh = gc.open_by_key(secret("sheet_id", SHEET_ID))
         centers = _frame_from_values(sh.worksheet("Centers").get_all_values())
         repo = _frame_from_values(sh.worksheet("Repository").get_all_values())
         return centers, repo, "Google Sheet (service account)"
@@ -315,6 +378,10 @@ with st.sidebar:
     f_model = st.multiselect("Model", ["Older V6", "V6", "V7"])
     f_cond = st.multiselect("Condition", list(CONDITION_LABELS.values()))
     st.divider()
+    st.caption(f"👤 Logged in as **{st.session_state['auth_user']}**")
+    if st.button("Log out", width="stretch"):
+        st.session_state.pop("auth_user", None)
+        st.rerun()
     st.caption(f"Source: {source}")
     st.caption(f"Loaded: {loaded_at} PKT · auto-refresh every {REFRESH_SECONDS // 60} min")
     st.markdown(f"[Open the sheet ↗]({SHEET_URL})")
