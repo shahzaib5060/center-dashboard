@@ -3,49 +3,38 @@ Center Repository – Live Dashboard
 Chughtai Lab · Operations Excellence
 
 Reads the "Center Repository – Master" Google Sheet live (Centers + Repository tabs),
-recomputes coverage, condition and renovation priority from the raw rows, and refreshes
-every 5 minutes (or on demand).
+scores every centre, and shows index.html full-width with that data — the same layout
+as the Centre Agreements dashboard. Refreshes every 5 minutes, or with "Refresh data".
 
-Run locally:   streamlit run app.py
+Files needed in the repo:  app.py · index.html · requirements.txt
+Run locally:               streamlit run app.py
 """
 
 from __future__ import annotations
 
-import io
+import json
 import os
 import re
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
+
+BASE = Path(__file__).parent
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
 SHEET_ID = "15aOUCoH0DXNfuy4Mpr_Ug5aevKI9BDkNvn2pRlDPQEE"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
 REFRESH_SECONDS = 300
 PKT = timezone(timedelta(hours=5))
-
-NAVY = "#1B2A6B"
-GOLD = "#F0B429"
-INK = "#1F2937"
-MUTED = "#6B7280"
+PAGE_HEIGHT = 1700          # height of the dashboard frame in pixels
+MAX_ATTEMPTS = 5
 
 CONDITION_LABELS = {1: "1 - Critical", 2: "2 - Poor", 3: "3 - Fair", 4: "4 - Good", 5: "5 - Excellent"}
-CONDITION_COLORS = {
-    "1 - Critical": "#B42318",
-    "2 - Poor": "#E8590C",
-    "3 - Fair": GOLD,
-    "4 - Good": "#5B6BB0",
-    "5 - Excellent": NAVY,
-}
-MODEL_COLORS = {"Older V6": "#B42318", "V6": GOLD, "V7": NAVY}
-BAND_ORDER = ["Urgent", "High", "Medium", "Low"]
-BAND_COLORS = {"Urgent": "#B42318", "High": "#E8590C", "Medium": GOLD, "Low": "#5B6BB0"}
 
 # Keyword themes for the free-text "Key Issues" column
 ISSUE_THEMES = {
@@ -70,34 +59,34 @@ NO_ISSUE = re.compile(
     re.I,
 )
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Page setup + styling
+# Page setup — same look as the Centre Agreements dashboard
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Center Repository Dashboard", page_icon="🏥", layout="wide")
-
 st.markdown(
-    f"""
-<style>
-  .block-container {{ padding-top: 1.4rem; padding-bottom: 2rem; }}
-  .cl-header {{ background: {NAVY}; color: white; padding: 18px 22px; border-radius: 10px;
-               border-bottom: 4px solid {GOLD}; margin-bottom: 14px; }}
-  .cl-header h1 {{ color: white; font-size: 1.55rem; margin: 0; font-weight: 700; }}
-  .cl-header p  {{ color: #D6DBF0; margin: 4px 0 0 0; font-size: .9rem; }}
-  .kpi {{ background: white; border: 1px solid #E5E7EB; border-left: 5px solid {NAVY};
-          border-radius: 8px; padding: 12px 14px; height: 100%; }}
-  .kpi.gold {{ border-left-color: {GOLD}; }}
-  .kpi.red  {{ border-left-color: #B42318; }}
-  .kpi .lbl {{ color: {MUTED}; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }}
-  .kpi .val {{ color: {INK}; font-size: 1.7rem; font-weight: 700; line-height: 1.2; }}
-  .kpi .sub {{ color: {MUTED}; font-size: .8rem; }}
-  .note {{ color: {MUTED}; font-size: .85rem; }}
-  div[data-testid="stTabs"] button p {{ font-weight: 600; }}
-</style>
-""",
+    """<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    html, body, [class*="css"], .stApp { font-family: 'Inter', system-ui, sans-serif; }
+    .block-container {padding: 0 !important; max-width: 100% !important;}
+    header[data-testid="stHeader"] {display: none;}
+    #MainMenu, footer {visibility: hidden;}
+    iframe {display: block;}
+    /* login card */
+    .lg-brand {max-width: 400px; margin: 9vh auto 14px auto; text-align: center;}
+    .lg-brand .lg-mark {width: 44px; height: 44px; border-radius: 12px; background: rgba(79,70,229,.10); color: #4F46E5;
+        display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; margin-bottom: 10px;}
+    .lg-brand h1 {font-size: 22px; font-weight: 600; margin: 0; color: #0F172A; letter-spacing: -.01em;}
+    .lg-brand p {font-size: 13px; color: #64748B; margin: 4px 0 0 0;}
+    div[data-testid="stForm"] {background: #fff; border: 1px solid #E5E7EB; border-radius: 14px; padding: 22px 22px 8px 22px;}
+    .stFormSubmitButton button, .stButton button[kind="primary"] {background: #4F46E5 !important; border-color: #4F46E5 !important; color: #fff !important; border-radius: 10px !important;}
+    /* thin bar above the dashboard */
+    .tb-user {font-size: 12.5px; color: #64748B; padding-top: 9px; text-align: right;}
+    .tb-user b {color: #0F172A; font-weight: 600;}
+    div[data-testid="stHorizontalBlock"] .stButton button {font-size: 12.5px; padding: 2px 12px; min-height: 30px; border-radius: 10px; border: 1px solid #E5E7EB;}
+    </style>""",
     unsafe_allow_html=True,
 )
-
-px.defaults.template = "plotly_white"
 
 
 def secret(key, default=None):
@@ -108,32 +97,23 @@ def secret(key, default=None):
         return default
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Login
-#   Users live in Streamlit Secrets, never in the code:
-#       [users]
-#       shahzaib = "StrongPassword1"
-#       amber    = "AnotherPassword2"
-#   If no [users] section exists, the dashboard stays locked.
+# Login — users live in Streamlit Secrets:
+#   [users]
+#   shahzaib = "StrongPassword1"
 # ─────────────────────────────────────────────────────────────────────────────
-MAX_ATTEMPTS = 5
-
-
 def check_login() -> bool:
     import hmac
 
     if st.session_state.get("auth_user"):
         return True
-
     users = dict(secret("users", {}) or {})
-
     st.markdown(
-        f"""<div class="cl-header" style="max-width:460px;margin:60px auto 18px auto;text-align:center">
-        <h1>Center Repository</h1><p>Chughtai Lab · Operations Excellence</p></div>""",
+        '<div class="lg-brand"><div class="lg-mark">CR</div><h1>Center Repository</h1>'
+        "<p>Chughtai Lab · Operations Excellence</p></div>",
         unsafe_allow_html=True,
     )
-    _, mid, _ = st.columns([1, 1.2, 1])
+    _, mid, _ = st.columns([1, 1, 1])
     with mid:
         if not users:
             st.error("No users are set up yet. Add a [users] section in the app's Secrets.")
@@ -154,8 +134,7 @@ def check_login() -> bool:
                 st.rerun()
             else:
                 st.session_state["auth_attempts"] = attempts + 1
-                left = MAX_ATTEMPTS - attempts - 1
-                st.error(f"Wrong username or password. {left} attempt(s) left.")
+                st.error(f"Wrong username or password. {MAX_ATTEMPTS - attempts - 1} attempt(s) left.")
     return False
 
 
@@ -163,68 +142,40 @@ if not check_login():
     st.stop()
 
 
-def style_fig(fig: go.Figure, height: int = 380) -> go.Figure:
-    fig.update_layout(
-        height=height,
-        margin=dict(l=10, r=10, t=40, b=60),
-        font=dict(family="Segoe UI, Arial, sans-serif", color=INK, size=12),
-        title_font=dict(size=15, color=NAVY),
-        legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="left", x=0, title=None),
-        plot_bgcolor="white",
-    )
-    fig.update_xaxes(gridcolor="#EEF0F4")
-    fig.update_yaxes(gridcolor="#EEF0F4")
-    return fig
-
-
-def kpi(col, label, value, sub="", tone=""):
-    col.markdown(
-        f'<div class="kpi {tone}"><div class="lbl">{label}</div>'
-        f'<div class="val">{value}</div><div class="sub">{sub}</div></div>',
-        unsafe_allow_html=True,
-    )
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Data loading (three sources, tried in order)
+# Data loading
 # ─────────────────────────────────────────────────────────────────────────────
 def _frame_from_values(values: list[list[str]]) -> pd.DataFrame:
     if not values:
         return pd.DataFrame()
     header = [h.strip() for h in values[0]]
     rows = [r + [""] * (len(header) - len(r)) for r in values[1:]]
-    df = pd.DataFrame(rows, columns=header)
-    return df
+    return pd.DataFrame(rows, columns=header)
 
 
 @st.cache_data(ttl=REFRESH_SECONDS, show_spinner="Reading the live sheet…")
 def load_from_google() -> tuple[pd.DataFrame, pd.DataFrame, str]:
-    """Live read. Uses a service account if configured, else the public CSV export."""
+    """Live read through the service account (read-only)."""
     if secret("gcp_json") or secret("gcp_service_account"):
-        import json
         import gspread
 
-        if secret("gcp_json"):  # whole JSON key pasted as one block
-            creds = json.loads(secret("gcp_json"))
-        else:
-            creds = dict(secret("gcp_service_account"))
+        creds = json.loads(secret("gcp_json")) if secret("gcp_json") else dict(secret("gcp_service_account"))
         gc = gspread.service_account_from_dict(creds)
         sh = gc.open_by_key(secret("sheet_id", SHEET_ID))
         centers = _frame_from_values(sh.worksheet("Centers").get_all_values())
         repo = _frame_from_values(sh.worksheet("Repository").get_all_values())
         return centers, repo, "Google Sheet (service account)"
-
     base = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet="
     centers = pd.read_csv(base + "Centers", dtype=str, keep_default_na=False)
     repo = pd.read_csv(base + "Repository", dtype=str, keep_default_na=False)
     return centers, repo, "Google Sheet (link sharing)"
 
 
-def load_from_upload(file) -> tuple[pd.DataFrame, pd.DataFrame, str]:
-    xl = pd.ExcelFile(file)
-    centers = pd.read_excel(xl, "Centers", dtype=str, keep_default_na=False)
-    repo = pd.read_excel(xl, "Repository", dtype=str, keep_default_na=False)
-    return centers, repo, f"Uploaded file ({getattr(file, 'name', 'workbook')})"
+def load_from_file(path) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+    """Local testing only: set CENTER_REPO_XLSX to an exported workbook."""
+    xl = pd.ExcelFile(path)
+    return (pd.read_excel(xl, "Centers", dtype=str, keep_default_na=False),
+            pd.read_excel(xl, "Repository", dtype=str, keep_default_na=False), "Local file")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -331,380 +282,96 @@ def prepare(centers_raw: pd.DataFrame, repo_raw: pd.DataFrame):
     return merged, repo, orphans
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Sidebar: source + filters
-# ─────────────────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown(f"<h3 style='color:{NAVY};margin-bottom:0'>Center Repository</h3>", unsafe_allow_html=True)
-    st.caption("Chughtai Lab · Operations Excellence")
 
-    if st.button("🔄 Refresh now", width="stretch"):
-        st.cache_data.clear()
-        st.rerun()
+# ─────────────────────────────────────────────────────────────────────────────
+# Build the data the page needs
+# ─────────────────────────────────────────────────────────────────────────────
+def _txt(v) -> str:
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return ""
+    return str(v).strip()
 
-source_error = None
+
+def _int(v):
+    try:
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            return None
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_payload(data: pd.DataFrame, repo: pd.DataFrame, user: str) -> dict:
+    centres = []
+    for r in data.to_dict("records"):
+        sv = bool(r.get("Surveyed"))
+        sign_issues = r.get("Signboard Issues") if isinstance(r.get("Signboard Issues"), list) else []
+        themes = r.get("Issue Themes") if isinstance(r.get("Issue Themes"), list) else []
+        ts = r.get("Timestamp")
+        centres.append({
+            "code": _txt(r.get("Center Code")), "centre": _txt(r.get("Center Name")), "region": _txt(r.get("Region")),
+            "city": _txt(r.get("City")), "al": _txt(r.get("Area Lead")), "rl": _txt(r.get("Regional Lead")),
+            "sv": sv, "model": _txt(r.get("Model")) if sv else "", "layout": _txt(r.get("Layout Type")) if sv else "",
+            "logo": _txt(r.get("Back-lit Logo (Reception)")) if sv else "", "sign": _txt(r.get("Signboard Condition")) if sv else "",
+            "sign_n": len(sign_issues), "reno": _txt(r.get("Last Renovation (Year)")), "reno_p": _txt(r.get("Reno Problem")),
+            "cond": _int(r.get("Condition")), "score": _int(r.get("Priority Score")), "band": _txt(r.get("Priority Band")) if sv else "",
+            "issues": _txt(r.get("Key Issues")), "themes": themes, "photos": _int(r.get("Photos Uploaded")) or 0,
+            "times": _int(r.get("Times Submitted")) or 0, "link": _txt(r.get("Photo Link")) if _txt(r.get("Photo Link")).startswith("http") else "",
+            "by": _txt(r.get("Submitted By")), "ts": ts.strftime("%Y-%m-%d %H:%M") if isinstance(ts, pd.Timestamp) and not pd.isna(ts) else "",
+        })
+
+    # day-by-day progress: first submission per centre = new; later ones = re-submissions
+    in_scope = set(data["Center Code"])
+    sub = repo[repo["Center Code"].isin(in_scope)].dropna(subset=["Timestamp"]).sort_values("Timestamp").copy()
+    region_of = dict(zip(data["Center Code"], data["Region"]))
+    sub["region"] = sub["Center Code"].map(region_of)
+    sub["d"] = sub["Timestamp"].dt.strftime("%Y-%m-%d")
+    sub["fresh"] = ~sub.duplicated("Center Code", keep="first")
+    times = pd.to_numeric(sub["Times Submitted"], errors="coerce").fillna(1).clip(lower=1)
+    sub["resub"] = (times - 1).where(sub["fresh"], 0)  # sheet keeps one row per centre with a submission counter
+    daily = (sub.groupby(["d", "region"]).agg(fresh=("fresh", "sum"), resub=("resub", "sum"), photos=("Photos Uploaded", "sum"))
+             .reset_index())
+    daily = [{"d": r.d, "region": r.region, "fresh": int(r.fresh), "resub": int(r.resub), "photos": int(r.photos)} for r in daily.itertuples()]
+
+    return {"meta": {"as_of": datetime.now(PKT).strftime("%-d %b %Y, %-I:%M %p"), "user": user}, "centres": centres, "daily": daily}
+
+
+@st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
+def page_template() -> str:
+    return (BASE / "index.html").read_text(encoding="utf-8")
+
+
+def render_page(payload: dict) -> str:
+    data = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+    return re.sub(r"/\*DATA\*/.*?/\*END\*/", lambda m: "/*DATA*/" + data + "/*END*/", page_template(), count=1, flags=re.S)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Page
+# ─────────────────────────────────────────────────────────────────────────────
 try:
-    if os.environ.get("CENTER_REPO_XLSX"):  # optional: point at a local export
-        centers_raw, repo_raw, source = load_from_upload(os.environ["CENTER_REPO_XLSX"])
+    if os.environ.get("CENTER_REPO_XLSX"):
+        centers_raw, repo_raw, source = load_from_file(os.environ["CENTER_REPO_XLSX"])
     else:
         centers_raw, repo_raw, source = load_from_google()
 except Exception as e:  # noqa: BLE001
-    source_error = e
-    centers_raw = repo_raw = None
-
-if source_error is not None or centers_raw is None:
     st.error(
         "Couldn't read the Google Sheet. Check that the service-account key is in the app's Secrets "
-        "and that the sheet is shared with the service-account email as Viewer, then click Refresh now."
-        f"\n\nDetails: `{source_error}`"
+        f"and that the sheet is shared with the service-account email as Viewer.\n\nDetails: `{e}`"
     )
     st.stop()
 
-data, repo_all, orphans = prepare(centers_raw, repo_raw)
-loaded_at = datetime.now(PKT).strftime("%d %b %Y, %I:%M %p")
+data, repo_all, _orphans = prepare(centers_raw, repo_raw)
+user = st.session_state["auth_user"]
 
-with st.sidebar:
-    st.divider()
-    st.markdown("**Filters**")
-    regions = sorted(data["Region"].dropna().unique())
-    f_region = st.multiselect("Region", regions)
-    pool = data[data["Region"].isin(f_region)] if f_region else data
-    f_rl = st.multiselect("Regional Lead", sorted(pool["Regional Lead"].dropna().unique()))
-    pool = pool[pool["Regional Lead"].isin(f_rl)] if f_rl else pool
-    f_al = st.multiselect("Area Lead", sorted(pool["Area Lead"].dropna().unique()))
-    f_model = st.multiselect("Model", ["Older V6", "V6", "V7"])
-    f_cond = st.multiselect("Condition", list(CONDITION_LABELS.values()))
-    st.divider()
-    st.caption(f"👤 Logged in as **{st.session_state['auth_user']}**")
-    if st.button("Log out", width="stretch"):
-        st.session_state.pop("auth_user", None)
-        st.rerun()
-    st.caption(f"Source: {source}")
-    st.caption(f"Loaded: {loaded_at} PKT · auto-refresh every {REFRESH_SECONDS // 60} min")
-    st.markdown(f"[Open the sheet ↗]({SHEET_URL})")
+# thin bar: user · refresh · log out
+_, c_user, c_ref, c_out = st.columns([6, 2.2, 1.1, 0.9])
+c_user.markdown(f'<div class="tb-user">Signed in as <b>{user}</b></div>', unsafe_allow_html=True)
+if c_ref.button("↻ Refresh data", width="stretch"):
+    st.cache_data.clear()
+    st.rerun()
+if c_out.button("Log out", width="stretch"):
+    st.session_state.pop("auth_user", None)
+    st.rerun()
 
-df = data.copy()
-if f_region:
-    df = df[df["Region"].isin(f_region)]
-if f_rl:
-    df = df[df["Regional Lead"].isin(f_rl)]
-if f_al:
-    df = df[df["Area Lead"].isin(f_al)]
-if f_model:
-    df = df[df["Model"].isin(f_model) | ~df["Surveyed"]]
-if f_cond:
-    df = df[df["Condition Label"].isin(f_cond) | ~df["Surveyed"]]
-
-sv = df[df["Surveyed"]]
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Header + KPIs
-# ─────────────────────────────────────────────────────────────────────────────
-st.markdown(
-    f"""<div class="cl-header"><h1>Center Repository — Renovation Readiness</h1>
-    <p>Live view of the network center survey · {len(df)} centers in scope · updated {loaded_at} PKT</p></div>""",
-    unsafe_allow_html=True,
-)
-
-total, done = len(df), int(df["Surveyed"].sum())
-cov = done / total * 100 if total else 0
-poor = int((sv["Condition"] <= 2).sum())
-avg_c = sv["Condition"].mean()
-v7 = (sv["Model"] == "V7").mean() * 100 if len(sv) else 0
-older = int((sv["Model"] == "Older V6").sum())
-signw = int(sv["Signboard Needs Work"].sum())
-nologo = int(sv["No Back-lit Logo"].sum())
-urgent = int((sv["Priority Band"] == "Urgent").sum())
-
-c = st.columns(4)
-kpi(c[0], "Survey coverage", f"{cov:.0f}%", f"{done} of {total} centers · {total - done} pending")
-kpi(c[1], "Average condition", f"{avg_c:.2f} / 5" if len(sv) else "–", f"{poor} centers rated Poor or Critical", "red" if poor else "")
-kpi(c[2], "Urgent renovation", f"{urgent}", "priority score ≥ 60", "red" if urgent else "")
-kpi(c[3], "V7 model share", f"{v7:.0f}%", f"{older} still on Older V6", "gold")
-st.write("")
-c = st.columns(4)
-kpi(c[0], "Signboard needs work", f"{signw}", f"{signw / len(sv) * 100:.0f}% of surveyed" if len(sv) else "", "gold")
-kpi(c[1], "No back-lit logo", f"{nologo}", "at reception", "gold")
-kpi(c[2], "Photos collected", f"{int(sv['Photos Uploaded'].sum()):,}", f"avg {sv['Photos Uploaded'].mean():.1f} per center" if len(sv) else "")
-kpi(c[3], "Re-submissions", f"{int((sv['Times Submitted'] > 1).sum())}", "centers submitted more than once")
-st.write("")
-
-tabs = st.tabs(["📊 Overview", "🛠️ Renovation Priority", "🔎 Issues", "📋 Survey Tracker", "⚠️ Data Quality", "🏥 Center Lookup"])
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. Overview
-# ─────────────────────────────────────────────────────────────────────────────
-with tabs[0]:
-    reg = (
-        df.groupby("Region")
-        .agg(Centers=("Center Code", "size"), Surveyed=("Surveyed", "sum"))
-        .assign(Pending=lambda x: x.Centers - x.Surveyed, Coverage=lambda x: x.Surveyed / x.Centers * 100)
-        .reset_index()
-    )
-    regc = sv.groupby("Region").agg(
-        Avg=("Condition", "mean"), Poor=("Condition", lambda x: (x <= 2).sum())
-    ).reset_index()
-    reg = reg.merge(regc, on="Region", how="left")
-
-    l, r = st.columns(2)
-    with l:
-        rr = reg.sort_values(["Coverage", "Pending"], ascending=[False, True])  # least covered on top
-        fig = go.Figure()
-        fig.add_bar(y=rr.Region, x=rr.Surveyed, name="Surveyed", orientation="h", marker_color=NAVY)
-        fig.add_bar(y=rr.Region, x=rr.Pending, name="Pending", orientation="h", marker_color=GOLD,
-                    text=[f"{c:.0f}%" if p else "" for c, p in zip(rr.Coverage, rr.Pending)],
-                    textposition="outside")
-        fig.update_layout(barmode="stack", title="Survey coverage by region (least covered on top)")
-        st.plotly_chart(style_fig(fig, 30 * len(rr) + 120), width="stretch")
-    with r:
-        mix = (
-            sv.groupby(["Region", "Condition Label"]).size().reset_index(name="n")
-            .merge(reg[["Region", "Avg"]], on="Region")
-        )
-        mix["share"] = mix.n / mix.groupby("Region").n.transform("sum") * 100
-        order = reg.sort_values("Avg", ascending=False).Region.tolist()
-        fig = px.bar(
-            mix, y="Region", x="share", color="Condition Label", orientation="h",
-            category_orders={"Region": order, "Condition Label": list(CONDITION_LABELS.values())},
-            color_discrete_map=CONDITION_COLORS, title="Condition mix by region (worst average at bottom)",
-            hover_data={"n": True, "share": ":.0f"},
-        )
-        fig.update_xaxes(title="% of surveyed centers", range=[0, 100])
-        fig.update_yaxes(title=None)
-        st.plotly_chart(style_fig(fig, 30 * len(order) + 120), width="stretch")
-
-    l, m, r = st.columns(3)
-    with l:
-        mc = sv["Model"].value_counts().reindex(["Older V6", "V6", "V7"]).fillna(0).reset_index()
-        mc.columns = ["Model", "Centers"]
-        fig = px.bar(mc, x="Model", y="Centers", color="Model", color_discrete_map=MODEL_COLORS,
-                     text="Centers", title="Model mix")
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(style_fig(fig, 320), width="stretch")
-    with m:
-        lc = sv["Layout Type"].value_counts().reset_index()
-        lc.columns = ["Layout", "Centers"]
-        fig = px.bar(lc.sort_values("Centers"), y="Layout", x="Centers", orientation="h", text="Centers",
-                     title="Layout type", color_discrete_sequence=[NAVY])
-        st.plotly_chart(style_fig(fig, 320), width="stretch")
-    with r:
-        cc = sv["Condition Label"].value_counts().reindex(list(CONDITION_LABELS.values())).fillna(0).reset_index()
-        cc.columns = ["Condition", "Centers"]
-        fig = px.bar(cc, x="Condition", y="Centers", color="Condition", color_discrete_map=CONDITION_COLORS,
-                     text="Centers", title="Condition rating")
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(style_fig(fig, 320), width="stretch")
-
-    st.markdown("##### Region scorecard")
-    sign_r = sv.groupby("Region").agg(
-        Signboard=("Signboard Needs Work", "sum"), NoLogo=("No Back-lit Logo", "sum"),
-        OlderV6=("Model", lambda x: (x == "Older V6").sum()), V7=("Model", lambda x: (x == "V7").sum()),
-        Urgent=("Priority Band", lambda x: (x == "Urgent").sum()),
-    ).reset_index()
-    card = reg.merge(sign_r, on="Region", how="left").sort_values("Avg")
-    st.dataframe(
-        card[["Region", "Centers", "Surveyed", "Coverage", "Avg", "Poor", "Urgent", "OlderV6", "V7", "Signboard", "NoLogo"]],
-        hide_index=True, width="stretch",
-        column_config={
-            "Coverage": st.column_config.ProgressColumn("Coverage", format="%.0f%%", min_value=0, max_value=100),
-            "Avg": st.column_config.NumberColumn("Avg condition", format="%.2f"),
-            "Poor": "Poor/Critical", "OlderV6": "Older V6", "Signboard": "Signboard work", "NoLogo": "No back-lit logo",
-        },
-    )
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Renovation priority
-# ─────────────────────────────────────────────────────────────────────────────
-with tabs[1]:
-    with st.expander("How the priority score works (0–100)"):
-        st.markdown(
-            "- **Condition** – up to 50 pts (Critical = 50, Excellent = 0)\n"
-            "- **Model** – Older V6 = 20, V6 = 10, V7 = 0\n"
-            "- **Signboard** – up to 15 pts (5 per issue: rough / skin change / lights dim)\n"
-            "- **No back-lit logo** – 5 pts\n"
-            "- **Years since renovation** – up to 10 pts (8+ years = 10; unknown year = 5)\n\n"
-            "Bands: **Urgent ≥ 60**, High 45–59, Medium 31–44, Low ≤ 30."
-        )
-    l, r = st.columns([1, 2])
-    with l:
-        bc = sv["Priority Band"].value_counts().reindex(BAND_ORDER).fillna(0).reset_index()
-        bc.columns = ["Band", "Centers"]
-        fig = px.bar(bc, x="Band", y="Centers", color="Band", color_discrete_map=BAND_COLORS, text="Centers",
-                     title="Centers by priority band")
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(style_fig(fig, 340), width="stretch")
-    with r:
-        hb = sv.groupby(["Region", "Priority Band"]).size().unstack(fill_value=0).reindex(columns=BAND_ORDER, fill_value=0)
-        hb = hb.sort_values(["Urgent", "High"], ascending=True)
-        fig = go.Figure()
-        for b in BAND_ORDER:
-            fig.add_bar(y=hb.index, x=hb[b], name=b, orientation="h", marker_color=BAND_COLORS[b])
-        fig.update_layout(barmode="stack", title="Priority mix by region")
-        st.plotly_chart(style_fig(fig, max(340, 26 * len(hb) + 120)), width="stretch")
-
-    bands = st.multiselect("Show bands", BAND_ORDER, default=["Urgent", "High"])
-    pr = sv[sv["Priority Band"].isin(bands)] if bands else sv
-    pr = pr.sort_values(["Priority Score", "Condition"], ascending=[False, True])
-    show = pr[[
-        "Priority Score", "Priority Band", "Center Code", "Center Name", "Region", "Area Lead", "Model",
-        "Condition Label", "Signboard Condition", "Back-lit Logo (Reception)", "Last Renovation (Year)",
-        "Key Issues", "Photo Link",
-    ]]
-    st.dataframe(
-        show, hide_index=True, width="stretch", height=520,
-        column_config={
-            "Priority Score": st.column_config.ProgressColumn("Score", format="%d", min_value=0, max_value=100),
-            "Photo Link": st.column_config.LinkColumn("Photos", display_text="Open ↗"),
-            "Condition Label": "Condition", "Back-lit Logo (Reception)": "Back-lit logo",
-            "Last Renovation (Year)": "Last reno (as entered)",
-            "Key Issues": st.column_config.TextColumn("Key issues", width="large"),
-        },
-    )
-    out = io.BytesIO()
-    with pd.ExcelWriter(out, engine="openpyxl") as xw:
-        show.to_excel(xw, sheet_name="Renovation Priority", index=False)
-    st.download_button("⬇️ Download this list (Excel)", out.getvalue(), "renovation_priority.xlsx",
-                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. Issues
-# ─────────────────────────────────────────────────────────────────────────────
-with tabs[2]:
-    ex = sv[["Center Code", "Center Name", "Region", "Area Lead", "Condition Label", "Key Issues", "Issue Themes"]].explode("Issue Themes")
-    ex = ex.dropna(subset=["Issue Themes"])
-    reported = sv["Issue Themes"].str.len().gt(0).sum()
-    st.caption(
-        f"{reported} of {len(sv)} surveyed centers reported at least one issue. Themes are picked up from "
-        "keywords in the free-text *Key Issues* field, so one comment can count under several themes."
-    )
-    l, r = st.columns([1, 1.4])
-    with l:
-        tc = ex["Issue Themes"].value_counts().reset_index()
-        tc.columns = ["Theme", "Centers"]
-        fig = px.bar(tc.sort_values("Centers"), y="Theme", x="Centers", orientation="h", text="Centers",
-                     title="What centers are reporting", color_discrete_sequence=[NAVY])
-        st.plotly_chart(style_fig(fig, 30 * len(tc) + 120), width="stretch")
-    with r:
-        hm = ex.groupby(["Region", "Issue Themes"]).size().unstack(fill_value=0)
-        if not hm.empty:
-            hm = hm[tc["Theme"].tolist()]
-            fig = px.imshow(hm, text_auto=True, aspect="auto", color_continuous_scale=["#FFFFFF", GOLD, NAVY],
-                            title="Issue themes by region")
-            fig.update_layout(coloraxis_showscale=False)
-            fig.update_xaxes(tickangle=-35, title=None)
-            fig.update_yaxes(title=None)
-            st.plotly_chart(style_fig(fig, max(380, 24 * len(hm) + 160)), width="stretch")
-
-    theme = st.selectbox("Read the comments for a theme", ["All"] + tc["Theme"].tolist())
-    q = st.text_input("Search comments", placeholder="e.g. seepage, sofa, AC")
-    lst = sv[sv["Key Issues"].fillna("").str.strip() != ""].copy()
-    if theme != "All":
-        lst = lst[lst["Issue Themes"].apply(lambda t: theme in t)]
-    if q:
-        lst = lst[lst["Key Issues"].str.contains(q, case=False, na=False)]
-    lst["Themes"] = lst["Issue Themes"].apply(", ".join)
-    st.dataframe(
-        lst[["Center Code", "Center Name", "Region", "Area Lead", "Condition Label", "Themes", "Key Issues"]],
-        hide_index=True, width="stretch", height=440,
-        column_config={"Key Issues": st.column_config.TextColumn("Key issues", width="large"), "Condition Label": "Condition"},
-    )
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. Survey tracker
-# ─────────────────────────────────────────────────────────────────────────────
-with tabs[3]:
-    al = (
-        df.groupby(["Area Lead", "Region"])
-        .agg(Assigned=("Center Code", "size"), Surveyed=("Surveyed", "sum"))
-        .assign(Pending=lambda x: x.Assigned - x.Surveyed, Coverage=lambda x: x.Surveyed / x.Assigned * 100)
-        .reset_index()
-        .sort_values(["Coverage", "Pending"], ascending=[True, False])
-    )
-    l, r = st.columns([1.1, 1])
-    with l:
-        st.markdown("##### Area lead coverage")
-        st.dataframe(
-            al, hide_index=True, width="stretch", height=480,
-            column_config={"Coverage": st.column_config.ProgressColumn("Coverage", format="%.0f%%", min_value=0, max_value=100)},
-        )
-    with r:
-        pend = df[~df["Surveyed"]][["Center Code", "Center Name", "Region", "City", "Area Lead", "Regional Lead", "Survey Status"]]
-        st.markdown(f"##### Pending centers ({len(pend)})")
-        if pend.empty:
-            st.success("Every center in scope has been surveyed.")
-        else:
-            st.dataframe(pend, hide_index=True, width="stretch", height=480)
-
-    daily = repo_all.dropna(subset=["Timestamp"]).copy()
-    if f_region:
-        daily = daily[daily["Region"].isin(f_region)]
-    daily["Day"] = daily["Timestamp"].dt.date
-    dd = daily.groupby("Day").size().reset_index(name="Submissions")
-    dd["Cumulative"] = dd["Submissions"].cumsum()
-    fig = go.Figure()
-    fig.add_bar(x=dd.Day, y=dd.Submissions, name="Per day", marker_color=GOLD)
-    fig.add_scatter(x=dd.Day, y=dd.Cumulative, name="Cumulative", mode="lines+markers", line=dict(color=NAVY, width=3), yaxis="y2")
-    fig.update_layout(title="Submissions over time", yaxis2=dict(overlaying="y", side="right", showgrid=False))
-    st.plotly_chart(style_fig(fig, 320), width="stretch")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. Data quality
-# ─────────────────────────────────────────────────────────────────────────────
-with tabs[4]:
-    st.caption("Things in the sheet that will distort the numbers above until they are fixed at source.")
-    bad_year = sv[sv["Reno Problem"].isin(["Future year", "Implausible year", "Years-ago / short number", "Unreadable"])]
-    blank_year = sv[sv["Reno Problem"] == "Blank"]
-    low_photos = sv[sv["Photos Uploaded"] < 4]
-    no_link = sv[~sv["Photo Link"].fillna("").str.startswith("http")]
-    c = st.columns(4)
-    kpi(c[0], "Unusable renovation year", len(bad_year), "e.g. 0, 1, -4, 22025, 2027", "red" if len(bad_year) else "")
-    kpi(c[1], "Renovation year blank", len(blank_year), "left empty on the form", "gold")
-    kpi(c[2], "Codes not in Centers tab", len(orphans), "submissions that don't match the master list", "red" if len(orphans) else "")
-    kpi(c[3], "Missing photo folder link", len(no_link), "", "red" if len(no_link) else "")
-    st.write("")
-
-    st.markdown("##### Renovation year entries that can't be read as a year")
-    st.dataframe(
-        bad_year[["Center Code", "Center Name", "Region", "Area Lead", "Submitted By", "Last Renovation (Year)", "Reno Problem"]]
-        .rename(columns={"Last Renovation (Year)": "Entered", "Reno Problem": "Problem"}),
-        hide_index=True, width="stretch",
-    )
-    l, r = st.columns(2)
-    with l:
-        st.markdown("##### Submitted more than once (latest version used)")
-        st.dataframe(sv[sv["Times Submitted"] > 1][["Center Code", "Center Name", "Region", "Times Submitted", "Submitted By"]],
-                     hide_index=True, width="stretch")
-    with r:
-        st.markdown("##### Codes in Repository but not in Centers")
-        st.dataframe(orphans[["Center Code", "Center Name", "Region", "Submitted By"]], hide_index=True, width="stretch")
-    if len(no_link):
-        st.markdown("##### Missing photo folder link")
-        st.dataframe(no_link[["Center Code", "Center Name", "Region", "Area Lead", "Photos Uploaded"]], hide_index=True, width="stretch")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. Center lookup
-# ─────────────────────────────────────────────────────────────────────────────
-with tabs[5]:
-    opts = (df["Center Code"] + " · " + df["Center Name"]).tolist()
-    pick = st.selectbox("Find a center", opts, index=None, placeholder="Type a code or name…")
-    if pick:
-        row = df[df["Center Code"] == pick.split(" · ")[0]].iloc[0]
-        st.markdown(f"### {row['Center Name']}  \n<span class='note'>{row['Center Code']} · {row['City']} · {row['Region']}</span>", unsafe_allow_html=True)
-        if not row["Surveyed"]:
-            st.warning(f"Not surveyed yet. Area lead: **{row['Area Lead']}** · Regional lead: **{row['Regional Lead']}**")
-        else:
-            c = st.columns(4)
-            kpi(c[0], "Condition", row["Condition Label"] or "–", "")
-            kpi(c[1], "Model / layout", row["Layout Type"], f"Reception: {row['Reception Position']}", "gold")
-            kpi(c[2], "Priority", f"{row['Priority Score']:.0f}", row["Priority Band"], "red" if row["Priority Band"] == "Urgent" else "")
-            kpi(c[3], "Photos", int(row["Photos Uploaded"]), f"submitted {int(row['Times Submitted'])}×")
-            st.write("")
-            st.markdown(
-                f"**Area lead:** {row['Area Lead']} · **Regional lead:** {row['Regional Lead']}  \n"
-                f"**Signboard:** {row['Signboard Condition']} · **Back-lit logo:** {row['Back-lit Logo (Reception)']} · "
-                f"**Last renovation (as entered):** {row['Last Renovation (Year)'] or '–'}  \n"
-                f"**Submitted by:** {row['Submitted By']} on {row['Timestamp']:%d %b %Y %I:%M %p}"
-            )
-            st.info(row["Key Issues"] or "No issues reported.")
-            if str(row["Photo Link"]).startswith("http"):
-                st.link_button("📷 Open photo folder", row["Photo Link"])
+components.html(render_page(build_payload(data, repo_all, user)), height=PAGE_HEIGHT, scrolling=True)
