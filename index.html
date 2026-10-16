@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Center Repository Dashboard · Chughtai Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<style>
+:root {
+  --font-anthropic-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-anthropic-serif: 'Inter', system-ui, sans-serif;
+  --color-fg:#0F172A; --color-fg-muted:#64748B; --color-bg:#FFFFFF; --color-panel:#FFFFFF; --color-border-line:#E5E7EB;
+  --color-ok:#059669; --color-warn:#B45309; --color-bad:#DC2626;
+  --cds-font-size-caption:12.5px; --cds-font-size-body:14px; --cds-font-size-heading:16px; --cds-font-size-title:24px; --cds-font-weight-medium:500;
+  --cds-gap-xs:4px; --cds-gap-sm:8px; --cds-gap-md:16px; --cds-gap-lg:24px; --cds-gap-xl:32px;
+  --cds-pad-xs:4px; --cds-pad-sm:8px; --cds-pad-md:16px; --cds-pad-lg:22px; --cds-pad-xl:32px; --cds-radius:8px;
+  --cds-chart-grid:#EEF0F4; --cds-chart-axis:#CBD5E1; --cds-chart-muted:#CBD5E1; --cds-chart-status-critical:#EF4444;
+  --cds-surface-popover:#FFFFFF; --cds-border:#E5E7EB; --cds-shadow-popover:0 8px 24px rgba(15,23,42,.12); --cds-text-secondary:#64748B;
+  --cds-dur-slow:280ms; --cds-ease-out:cubic-bezier(.2,.8,.2,1);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-fg:#E5E7EB; --color-fg-muted:#94A3B8; --color-bg:#0B1020; --color-panel:#111827; --color-border-line:#1F2937;
+    --cds-chart-grid:#1F2937; --cds-chart-axis:#334155; --cds-chart-muted:#475569; --cds-surface-popover:#111827; --cds-border:#334155;
+    --cds-shadow-popover:0 8px 24px rgba(0,0,0,.5); --cds-text-secondary:#94A3B8; color-scheme: dark;
+  }
+}
+html, body { margin:0; background:var(--color-bg); color:var(--color-fg); font-family:var(--font-anthropic-sans); }
+#dash-root { min-height:100vh; }
+#dash-root .ag-shell { border:0; border-radius:0; min-height:100vh; overflow:visible; }
+#dash-root .ag-side { position:sticky; top:0; height:100vh; box-sizing:border-box; }
+@container (max-width: 820px) { #dash-root .ag-side { position:static; height:auto; } }
+.dash-skeleton { color:transparent !important; background:var(--cds-chart-grid); border-radius:6px; min-width:3ch; display:inline-block; }
+
+</style>
+<script>
+/* Data injected by app.py from the live Google Sheet */
+window.DATA = /*DATA*/{"meta":{},"centres":[],"daily":[]}/*END*/;
+</script>
+</head>
+<body>
+<div id="dash-root">
+<style>
+#dash-root { --dash-gutter: 0; }
+.ag { --ag-accent:#4F46E5; --ag-accent-soft:rgba(79,70,229,.10); --ag-green:#10B981; --ag-green-d:#047857; --ag-green-l:#6EE7B7; --ag-teal:#5FCDB8;
+  --ag-amber:#F59E0B; --ag-yellow:#FACC15; --ag-red:#EF4444; --ag-red-l:#F87171; --ag-red-d:#B91C1C; --ag-grey:#94A3B8;
+  --ag-line:var(--color-border-line); --ag-page:color-mix(in srgb, var(--color-fg) 3%, var(--color-bg));
+  font-family:var(--font-anthropic-sans); color:var(--color-fg); container-type:inline-size; }
+.ag-shell { display:grid; grid-template-columns:15rem minmax(0,1fr); min-height:100%; border:1px solid var(--ag-line); border-radius:var(--cds-radius); overflow:hidden; }
+/* sidebar */
+.ag-side { background:var(--color-panel); border-right:1px solid var(--ag-line); display:flex; flex-direction:column; padding:var(--cds-pad-md) var(--cds-pad-sm); gap:2px; }
+.ag-brand { padding:var(--cds-pad-sm) var(--cds-pad-sm) var(--cds-pad-md); border-bottom:1px solid var(--ag-line); margin-bottom:var(--cds-gap-sm); }
+.ag-brand b { display:block; font-size:var(--cds-font-size-body); font-weight:600; }
+.ag-brand span { font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); }
+.ag-nav { font:inherit; font-size:var(--cds-font-size-body); display:flex; align-items:center; gap:.7rem; width:100%; text-align:left; background:none; border:0; border-radius:8px;
+  padding:.55rem .7rem; color:var(--color-fg); cursor:pointer; }
+.ag-nav svg { width:16px; height:16px; flex:0 0 16px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.ag-nav:hover { background:color-mix(in srgb, var(--color-fg) 5%, transparent); }
+.ag-nav[aria-current=page] { background:var(--ag-accent-soft); color:var(--ag-accent); box-shadow:inset 0 0 0 1px rgba(79,70,229,.25); }
+.ag-nav .ag-count { margin-left:auto; font-size:var(--cds-font-size-caption); font-variant-numeric:tabular-nums; border-radius:999px; padding:0 .45rem; }
+.ag-side-foot { margin-top:auto; padding:var(--cds-pad-md) var(--cds-pad-sm) var(--cds-pad-xs); border-top:1px solid var(--ag-line); font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); }
+/* main */
+.ag-main { background:var(--ag-page); padding:var(--cds-pad-xl); display:flex; flex-direction:column; gap:var(--cds-gap-lg); min-width:0; }
+.ag-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:var(--cds-gap-md); align-items:flex-start; }
+.ag-h1 { font-size:calc(var(--cds-font-size-title) * 1.05); font-weight:600; margin:0; letter-spacing:-.01em; }
+.ag-sub { margin:.25rem 0 0; color:var(--color-fg-muted); font-size:var(--cds-font-size-body); }
+.ag-grade { text-align:right; display:flex; gap:var(--cds-gap-md); align-items:flex-end; }
+.ag-grade-k { font-size:var(--cds-font-size-caption); letter-spacing:.08em; text-transform:uppercase; color:var(--color-fg-muted); }
+.ag-grade-v { font-size:calc(var(--cds-font-size-title) * 1.5); font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
+.ag-grade-s { font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); font-variant-numeric:tabular-nums; }
+.ag-chip { font-size:var(--cds-font-size-caption); border:1px solid var(--ag-line); background:var(--color-panel); border-radius:999px; padding:.2rem .7rem; color:var(--color-fg-muted); white-space:nowrap; }
+.ag-chip b { color:var(--color-fg); font-weight:600; }
+/* filter bar */
+.ag-filters { display:flex; flex-wrap:wrap; gap:var(--cds-gap-lg); align-items:flex-end; }
+.ag-fk { font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--color-fg-muted); font-weight:600; margin-bottom:.35rem; }
+.ag-seg { display:inline-flex; background:var(--color-panel); border:1px solid var(--ag-line); border-radius:10px; padding:3px; gap:2px; }
+.ag-seg button { font:inherit; font-size:var(--cds-font-size-body); background:none; border:0; border-radius:7px; padding:.35rem .8rem; color:var(--color-fg-muted); cursor:pointer; }
+.ag-seg button[aria-pressed=true] { background:var(--ag-accent); color:#fff; font-weight:600; }
+.ag-select { font:inherit; font-size:var(--cds-font-size-body); background:var(--color-panel); color:var(--color-fg); border:1px solid var(--ag-line); border-radius:10px; padding:.45rem .7rem; min-width:13rem; }
+.ag-btn { font:inherit; font-size:var(--cds-font-size-caption); background:var(--color-panel); color:var(--color-fg); border:1px solid var(--ag-line); border-radius:10px; padding:.5rem .8rem; cursor:pointer; }
+.ag-showing { font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); margin-top:calc(-1 * var(--cds-gap-sm)); }
+.ag-showing b { color:var(--color-fg); font-weight:600; }
+/* cards */
+.ag-card { background:var(--color-panel); border:1px solid var(--ag-line); border-radius:14px; padding:var(--cds-pad-lg); min-width:0; position:relative; }
+.ag-card-t { font-size:var(--cds-font-size-body); font-weight:600; margin:0; }
+.ag-card-n { font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); margin:.2rem 0 var(--cds-gap-md); }
+.ag-kpis { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:var(--cds-gap-md); }
+.ag-kpi { cursor:pointer; transition:box-shadow var(--cds-dur-slow), transform var(--cds-dur-slow); display:flex; flex-direction:column; }
+.ag-kpi:hover { box-shadow:0 6px 20px rgba(15,23,42,.08); transform:translateY(-1px); }
+.ag-kpi-top { display:flex; justify-content:space-between; gap:var(--cds-gap-sm); align-items:flex-start; min-height:2.6rem; }
+.ag-eyebrow { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--color-fg-muted); }
+.ag-kpi-title { font-size:var(--cds-font-size-body); font-weight:600; margin-top:2px; }
+.ag-kpi-val { font-size:calc(var(--cds-font-size-title) * 1.35); font-weight:600; font-variant-numeric:tabular-nums; margin-top:var(--cds-gap-md); line-height:1.1; letter-spacing:-.01em; }
+.ag-kpi-row { display:flex; justify-content:space-between; align-items:center; gap:var(--cds-gap-sm); font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); margin-top:.15rem; }
+.ag-chev { color:var(--color-fg-muted); font-size:16px; line-height:1; }
+.ag-spark { height:52px; margin-top:var(--cds-gap-sm); position:relative; }
+.ag-mini { display:flex; height:8px; border-radius:999px; overflow:hidden; background:var(--cds-chart-grid); margin-top:var(--cds-gap-md); }
+.ag-mini i { display:block; height:100%; }
+.ag-pill { font-size:11.5px; font-weight:600; border-radius:999px; padding:.15rem .6rem; white-space:nowrap; }
+.ag-p-green { background:rgba(16,185,129,.13); color:#059669; } .ag-p-red { background:rgba(239,68,68,.12); color:#DC2626; }
+.ag-p-amber { background:rgba(245,158,11,.16); color:#B45309; } .ag-p-grey { background:rgba(148,163,184,.2); color:var(--color-fg-muted); }
+.ag-p-indigo { background:var(--ag-accent-soft); color:var(--ag-accent); }
+.ag-badge { font-size:11.5px; font-weight:600; border:1px solid currentColor; border-radius:999px; padding:0 .5rem; }
+.ag-row2 { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:var(--cds-gap-md); }
+/* donut */
+.ag-donut-wrap { display:flex; align-items:center; gap:var(--cds-gap-xl); flex-wrap:wrap; }
+.ag-donut { width:11.5rem; flex:0 0 11.5rem; position:relative; }
+.ag-dl { flex:1 1 14rem; display:grid; gap:.55rem; font-size:var(--cds-font-size-body); }
+.ag-dl-r { display:flex; align-items:center; gap:.6rem; }
+.ag-dl-r span:nth-child(2) { flex:1; }
+.ag-dl-r b { font-weight:400; color:var(--color-fg-muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.ag-sw { display:inline-block; width:.7rem; height:.7rem; border-radius:3px; flex:0 0 .7rem; }
+/* category bar */
+.ag-catbar { display:flex; height:14px; border-radius:999px; overflow:hidden; background:var(--cds-chart-grid); margin-bottom:var(--cds-gap-md); position:relative; }
+.ag-catbar i { display:block; height:100%; cursor:default; transition:filter .15s; }
+.ag-catbar i:hover { filter:brightness(1.1) saturate(1.2); }
+.ag-catleg { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:.45rem var(--cds-gap-xl); font-size:var(--cds-font-size-caption); }
+.ag-catleg .ag-dl-r b { font-size:var(--cds-font-size-caption); }
+/* charts */
+.ag-chart { position:relative; }
+.ag-chart svg text { font-family:var(--font-anthropic-sans); font-size:11.5px; fill:var(--color-fg-muted); font-variant-numeric:tabular-nums; }
+.ag-chart svg .ag-dark { fill:var(--color-fg); }
+.ag-legend { display:flex; flex-wrap:wrap; justify-content:center; gap:var(--cds-gap-md); font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); margin-bottom:var(--cds-gap-sm); }
+.ag-legend span { display:inline-flex; align-items:center; gap:.35rem; }
+.ag-ln { display:inline-block; width:14px; height:3px; border-radius:2px; }
+.ag-tip { position:absolute; pointer-events:none; z-index:5; background:var(--cds-surface-popover); border:1px solid var(--cds-border); border-radius:var(--cds-radius); box-shadow:var(--cds-shadow-popover);
+  padding:var(--cds-pad-xs) var(--cds-pad-sm); font-size:var(--cds-font-size-caption); white-space:nowrap; }
+.ag-tip-h { color:var(--cds-text-secondary); margin-bottom:2px; }
+.ag-tip .ag-sw { width:.55rem; height:.55rem; margin-right:.35rem; }
+/* regional breakdown */
+.ag-rb-head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--cds-gap-md); flex-wrap:wrap; }
+.ag-rb-list { display:flex; flex-direction:column; }
+.ag-rb { padding:.75rem .4rem; border-bottom:1px solid var(--ag-line); cursor:pointer; border-radius:8px; }
+.ag-rb:hover { background:color-mix(in srgb, var(--color-fg) 3%, transparent); }
+.ag-rb.ag-on { background:var(--ag-accent-soft); }
+.ag-rb-top { display:flex; justify-content:space-between; gap:var(--cds-gap-sm); flex-wrap:wrap; align-items:baseline; margin-bottom:.4rem; }
+.ag-rb-name { font-weight:500; }
+.ag-rb-stats { font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); font-variant-numeric:tabular-nums; }
+.ag-rb-stats b { font-weight:700; }
+.ag-rb-bar { display:flex; height:6px; border-radius:999px; overflow:hidden; background:var(--cds-chart-grid); }
+.ag-rb-bar i { display:block; height:100%; }
+.ag-drill { margin:.5rem 0 .75rem; padding:var(--cds-pad-md); border:1px solid rgba(79,70,229,.28); border-radius:12px; background:var(--color-panel); box-shadow:0 4px 16px rgba(79,70,229,.06); }
+.ag-drill-h { display:flex; justify-content:space-between; flex-wrap:wrap; gap:.6rem; align-items:center; margin-bottom:.7rem; }
+.ag-chips { display:flex; flex-wrap:wrap; gap:.35rem; }
+.ag-chipbtn { font:inherit; font-size:12px; border:1px solid var(--ag-line); background:var(--color-panel); color:var(--color-fg-muted); border-radius:999px; padding:.22rem .7rem; cursor:pointer; }
+.ag-chipbtn:hover { border-color:var(--ag-accent); color:var(--ag-accent); }
+.ag-chipbtn[aria-pressed=true] { background:var(--ag-accent); border-color:var(--ag-accent); color:#fff; }
+.ag-chipbtn b { font-weight:700; margin-left:.3rem; font-variant-numeric:tabular-nums; }
+.ag-st { font-size:11.5px; font-weight:600; border-radius:999px; padding:.12rem .55rem; white-space:nowrap; display:inline-block; }
+.ag-close { font:inherit; font-size:12px; background:none; border:0; color:var(--ag-accent); cursor:pointer; padding:0; }
+/* tables */
+.ag-scroll { max-height:34rem; overflow:auto; }
+.ag-tbl { width:100%; border-collapse:collapse; font-size:var(--cds-font-size-caption); font-variant-numeric:tabular-nums; }
+.ag-tbl th { position:sticky; top:0; z-index:1; background:var(--color-panel); text-align:left; font-weight:600; color:var(--color-fg-muted); padding:.55rem .6rem; border-bottom:1px solid var(--ag-line); white-space:nowrap; font-size:11px; letter-spacing:.04em; text-transform:uppercase; }
+.ag-tbl td { padding:.6rem .6rem; border-bottom:1px solid var(--ag-line); vertical-align:middle; }
+.ag-tbl tbody tr:hover td { background:color-mix(in srgb, var(--color-fg) 3%, transparent); }
+.ag-tbl tr.ag-click { cursor:pointer; }
+.ag-tbl tr.ag-sel td { background:var(--ag-accent-soft); }
+.ag-num { text-align:right; }
+.ag-tbl th.ag-num { text-align:right; }
+.ag-strong { font-weight:600; }
+.ag-red { color:#DC2626; font-weight:600; } .ag-amber { color:#B45309; font-weight:600; } .ag-green { color:#059669; font-weight:600; }
+.ag-sortbtn { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; text-transform:inherit; letter-spacing:inherit; }
+.ag-bar { position:relative; height:6px; min-width:4.5rem; border-radius:999px; background:var(--cds-chart-grid); overflow:hidden; }
+.ag-bar > i { position:absolute; left:0; top:0; bottom:0; border-radius:999px; }
+.ag-search { font:inherit; font-size:var(--cds-font-size-body); width:100%; max-width:20rem; padding:.45rem .7rem; border:1px solid var(--ag-line); border-radius:10px; background:var(--color-panel); color:var(--color-fg); }
+.ag-tools { display:flex; gap:var(--cds-gap-sm); flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:var(--cds-gap-md); }
+.ag-empty { font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); padding:var(--cds-pad-lg) 0; text-align:center; }
+.ag-notes { font-size:var(--cds-font-size-body); color:var(--color-fg-muted); line-height:1.65; margin:0; padding-left:1.1rem; }
+.ag-failed { display:flex; align-items:center; justify-content:center; gap:.4rem; min-height:5rem; color:var(--color-fg-muted); font-size:var(--cds-font-size-caption); }
+.ag-failed::before { content:""; width:.375rem; height:.375rem; border-radius:50%; background:var(--color-bad); }
+.ag-page[hidden] { display:none; }
+.ag-page { display:flex; flex-direction:column; gap:var(--cds-gap-lg); }
+[data-dash-source-state=refreshing] { opacity:.5; transition:opacity var(--cds-dur-slow); }
+@media (prefers-reduced-motion: no-preference) {
+  .ag-in { animation:ag-in var(--cds-dur-slow) var(--cds-ease-out) both; }
+  @keyframes ag-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+}
+/* responsive */
+@container (max-width: 1100px) { .ag-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+@container (max-width: 980px) { .ag-row2 { grid-template-columns:1fr; } }
+@container (max-width: 820px) {
+  .ag-shell { grid-template-columns:1fr; }
+  .ag-side { flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid var(--ag-line); padding:var(--cds-pad-xs); }
+  .ag-brand, .ag-side-foot { display:none; }
+  .ag-nav { width:auto; white-space:nowrap; }
+  .ag-nav .ag-count { display:none; }
+  .ag-main { padding:var(--cds-pad-md); }
+  .ag-grade { text-align:left; }
+}
+@container (max-width: 520px) { .ag-kpis { grid-template-columns:1fr; } .ag-catleg { grid-template-columns:1fr; } .ag-select { min-width:0; width:100%; } }
+
+/* additions for this dashboard */
+.ag-tbl td.ag-wrap { white-space:normal; min-width:16rem; max-width:28rem; line-height:1.45; }
+.ag-link { color:var(--ag-accent); text-decoration:none; font-weight:600; white-space:nowrap; }
+.ag-link:hover { text-decoration:underline; }
+.ag-theme { display:inline-block; font-size:11px; font-weight:600; border-radius:999px; padding:.08rem .5rem; margin:0 .25rem .2rem 0; background:var(--ag-accent-soft); color:var(--ag-accent); white-space:nowrap; }
+.ag-hb { display:grid; grid-template-columns:minmax(9rem,13rem) minmax(0,1fr) 3.2rem; gap:.75rem; align-items:center; padding:.42rem .4rem; border-radius:8px; cursor:pointer; font-size:var(--cds-font-size-body); }
+.ag-hb:hover { background:color-mix(in srgb, var(--color-fg) 3%, transparent); }
+.ag-hb.ag-on { background:var(--ag-accent-soft); }
+.ag-hb .ag-bar { height:8px; }
+.ag-hb b { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.ag-row3 { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:var(--cds-gap-md); }
+.ag-sub2 { font-size:var(--cds-font-size-caption); color:var(--color-fg-muted); font-weight:600; letter-spacing:.06em; text-transform:uppercase; margin:var(--cds-gap-md) 0 .5rem; }
+@container (max-width: 980px) { .ag-row3 { grid-template-columns:1fr; } }
+</style>
+
+<div class="ag" id="top">
+<div class="ag-shell">
+  <aside class="ag-side" aria-label="Sections">
+    <div class="ag-brand"><b>Center Repository</b><span>Chughtai Lab · Operations</span></div>
+    <button class="ag-nav" data-go="dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</button>
+    <button class="ag-nav" data-go="regions"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15h3v3H7zM12 10h3v8h-3zM17 6h3v12h-3z"/></svg>Region scorecard</button>
+    <button class="ag-nav" data-go="priority"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/></svg>Renovation priority<span class="ag-count ag-p-red" id="cntUrg"></span></button>
+    <button class="ag-nav" data-go="issues"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Issues reported<span class="ag-count ag-p-amber" id="cntIss"></span></button>
+    <button class="ag-nav" data-go="tracker"><svg viewBox="0 0 24 24"><path d="M9 3h6l1 2h3v16H5V5h3z"/><path d="M9 12l2 2 4-4"/></svg>Survey tracker<span class="ag-count ag-p-grey" id="cntPen"></span></button>
+    <button class="ag-nav" data-go="quality"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>Data quality<span class="ag-count ag-p-grey" id="cntDq"></span></button>
+    <button class="ag-nav" data-go="centres"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg>All centres</button>
+    <button class="ag-nav" data-go="about"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/></svg>About the data</button>
+    <div class="ag-side-foot">Operations Excellence<br>Live from Google Sheet<br><span id="asOfFoot"></span></div>
+  </aside>
+
+  <main class="ag-main">
+    <div class="ag-head">
+      <div>
+        <h1 class="ag-h1" id="pageTitle">Center Repository</h1>
+        <p class="ag-sub" id="pageSub"></p>
+      </div>
+      <div class="ag-grade">
+        <div>
+          <div class="ag-grade-k">Avg condition</div>
+          <div class="ag-grade-v" id="gAvg">—</div>
+          <div class="ag-grade-s"><span id="gSv">—</span> centres surveyed</div>
+        </div>
+        <span class="ag-chip">Coverage: <b id="gCov">—</b></span>
+      </div>
+    </div>
+
+    <div class="ag-filters">
+      <div>
+        <div class="ag-fk">Centre model</div>
+        <div class="ag-seg" id="modelSeg" role="group" aria-label="Centre model">
+          <button data-model="All">All</button><button data-model="Older V6">Older V6</button><button data-model="V6">V6</button><button data-model="V7">V7</button>
+        </div>
+      </div>
+      <div>
+        <div class="ag-fk">Region</div>
+        <select class="ag-select" id="regionSel" aria-label="Region"></select>
+      </div>
+      <div><button class="ag-btn" id="resetBtn">Reset filters</button></div>
+    </div>
+    <div class="ag-showing">Showing <b id="showRegion">All regions</b> · model <b id="showModel">All</b> · data as of <b id="showAsOf"></b></div>
+
+    <!-- DASHBOARD -->
+    <section class="ag-page" data-page="dashboard">
+      <div class="ag-kpis">
+        <div class="ag-card ag-kpi" data-go="tracker">
+          <div class="ag-kpi-top"><div><div class="ag-eyebrow">Coverage</div><div class="ag-kpi-title">Centres surveyed</div></div><span class="ag-pill ag-p-indigo" id="pillCov">—</span></div>
+          <div class="ag-kpi-val" id="kSv">—</div>
+          <div class="ag-kpi-row"><span>of <span id="kTot">—</span> centres in survey</span><span class="ag-chev">›</span></div>
+          <div class="ag-mini" id="miniCov"></div>
+        </div>
+        <div class="ag-card ag-kpi" data-go="priority">
+          <div class="ag-kpi-top"><div><div class="ag-eyebrow">Condition</div><div class="ag-kpi-title">Poor or critical</div></div><span class="ag-pill ag-p-red">Action needed</span></div>
+          <div class="ag-kpi-val" id="kPoor">—</div>
+          <div class="ag-kpi-row"><span>Rated 1–2 out of 5</span><span class="ag-chev">›</span></div>
+          <div class="ag-mini" id="miniCond"></div>
+        </div>
+        <div class="ag-card ag-kpi" data-go="priority">
+          <div class="ag-kpi-top"><div><div class="ag-eyebrow">Renovation</div><div class="ag-kpi-title">Urgent priority</div></div><span class="ag-pill ag-p-red">Score 61+</span></div>
+          <div class="ag-kpi-val" id="kUrg">—</div>
+          <div class="ag-kpi-row"><span>plus <span id="kHigh">—</span> high priority</span><span class="ag-chev">›</span></div>
+          <div class="ag-mini" id="miniBand"></div>
+        </div>
+        <div class="ag-card ag-kpi" data-go="centres">
+          <div class="ag-kpi-top"><div><div class="ag-eyebrow">Format</div><div class="ag-kpi-title">Older V6 centres</div></div><span class="ag-pill ag-p-amber">Upgrade</span></div>
+          <div class="ag-kpi-val" id="kOld">—</div>
+          <div class="ag-kpi-row"><span>V7 share <span id="kV7">—</span></span><span class="ag-chev">›</span></div>
+          <div class="ag-mini" id="miniModel"></div>
+        </div>
+      </div>
+
+      <div class="ag-kpis">
+        <div class="ag-card ag-kpi" data-go="issues">
+          <div class="ag-kpi-top"><div><div class="ag-eyebrow">Branding</div><div class="ag-kpi-title">Signboard needs work</div></div><span class="ag-pill ag-p-amber">Fix</span></div>
+          <div class="ag-kpi-val" id="kSign">—</div>
+          <div class="ag-kpi-row"><span><span id="kSignP">—</span> of surveyed centres</span><span class="ag-chev">›</span></div>
+        </div>
+        <div class="ag-card ag-kpi" data-go="centres">
+          <div class="ag-kpi-top"><div><div class="ag-eyebrow">Branding</div><div class="ag-kpi-title">No back-lit logo</div></div><span class="ag-pill ag-p-grey">At reception</span></div>
+          <div class="ag-kpi-val" id="kLogo">—</div>
+          <div class="ag-kpi-row"><span>Back-lit logo missing</span><span class="ag-chev">›</span></div>
+        </div>
+        <div class="ag-card ag-kpi" data-go="tracker">
+          <div class="ag-kpi-top"><div><div class="ag-eyebrow">Evidence</div><div class="ag-kpi-title">Photos collected</div></div><span class="ag-pill ag-p-indigo">Drive</span></div>
+          <div class="ag-kpi-val" id="kPho">—</div>
+          <div class="ag-kpi-row"><span>avg <span id="kPhoA">—</span> per centre</span><span class="ag-chev">›</span></div>
+          <div class="ag-spark" id="spSub"></div>
+        </div>
+        <div class="ag-card ag-kpi" data-go="regions">
+          <div class="ag-kpi-top"><div><div class="ag-eyebrow">Network</div><div class="ag-kpi-title">Regions · cities</div></div><span class="ag-pill ag-p-indigo">Scope</span></div>
+          <div class="ag-kpi-val"><span id="kReg">—</span> <span style="color:var(--color-fg-muted);font-weight:400">·</span> <span id="kCity">—</span></div>
+          <div class="ag-kpi-row"><span>Regions and cities covered</span><span class="ag-chev">›</span></div>
+        </div>
+      </div>
+
+      <div class="ag-row2">
+        <section class="ag-card">
+          <h2 class="ag-card-t">Condition rating</h2>
+          <p class="ag-card-n">Share of centres in survey by condition (1 = critical, 5 = excellent)</p>
+          <div class="ag-donut-wrap">
+            <div class="ag-donut ag-chart" id="donut"></div>
+            <div class="ag-dl" id="donutLegend"></div>
+          </div>
+        </section>
+        <section class="ag-card">
+          <h2 class="ag-card-t">Renovation priority &amp; format</h2>
+          <p class="ag-card-n">Priority band from the 0–100 score, and the centre model and reception layout</p>
+          <div class="ag-catbar" id="bandBar"></div>
+          <div class="ag-catleg" id="bandLeg"></div>
+          <div class="ag-sub2">Model · reception layout</div>
+          <div class="ag-catbar" id="layBar"></div>
+          <div class="ag-catleg" id="layLeg"></div>
+        </section>
+      </div>
+
+      <section class="ag-card">
+        <h2 class="ag-card-t">Survey progress day by day</h2>
+        <p class="ag-card-n">Centres surveyed per day (by their latest submission date), extra re-submissions, and the running total of centres covered.</p>
+        <div class="ag-legend">
+          <span><i class="ag-sw" style="background:var(--ag-accent)"></i>Centres surveyed</span>
+          <span><i class="ag-sw" style="background:var(--ag-teal)"></i>Re-submissions</span>
+          <span><i class="ag-ln" style="background:var(--ag-amber)"></i>Running total</span>
+        </div>
+        <div class="ag-chart" id="timeline" style="min-height:260px"></div>
+      </section>
+
+      <section class="ag-card">
+        <div class="ag-rb-head">
+          <div><h2 class="ag-card-t">Regional breakdown</h2><p class="ag-card-n">Click a region to see its centres</p></div>
+          <select class="ag-select" id="rbSort" aria-label="Sort regions" style="min-width:12rem">
+            <option value="low">Lowest avg condition first</option><option value="urgent">Most urgent first</option>
+            <option value="cov">Lowest coverage first</option><option value="size">Most centres</option>
+          </select>
+        </div>
+        <div class="ag-rb-list" id="rbList"></div>
+      </section>
+    </section>
+
+    <!-- REGION SCORECARD -->
+    <section class="ag-page" data-page="regions" hidden>
+      <section class="ag-card">
+        <div class="ag-tools"><div><h2 class="ag-card-t">Region scorecard</h2><p class="ag-card-n" style="margin-bottom:0">Click a row to focus that region. Click a column to sort.</p></div></div>
+        <div class="ag-scroll">
+          <table class="ag-tbl" id="regionTbl">
+            <thead><tr>
+              <th><button class="ag-sortbtn" data-sort="region">Region</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="centres">Centres</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="surveyed">Surveyed</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="coverage">Coverage</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="avg">Avg cond.</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="poor">Poor/Crit.</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="urgent">Urgent</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="high">High</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="older">Older V6</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="v7">V7</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="sign">Signboard</button></th>
+              <th class="ag-num"><button class="ag-sortbtn" data-sort="nologo">No logo</button></th>
+              <th aria-hidden="true"></th>
+            </tr></thead><tbody></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="ag-card" id="regionCentresCard" hidden><div id="regionCentres"></div></section>
+    </section>
+
+    <!-- PRIORITY -->
+    <section class="ag-page" data-page="priority" hidden>
+      <section class="ag-card">
+        <div class="ag-tools">
+          <div><h2 class="ag-card-t">Renovation priority list</h2><p class="ag-card-n" style="margin-bottom:0">Highest score first. Score = condition (50) + model (20) + signboard (15) + no back-lit logo (5) + years since renovation (10).</p></div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap"><input class="ag-search" id="priSearch" type="search" placeholder="Search centre, city, code or issue"><button class="ag-btn" id="priCsv">⬇ Download CSV</button></div>
+        </div>
+        <div class="ag-chips" id="priChips" style="margin-bottom:var(--cds-gap-md)"></div>
+        <div class="ag-scroll" style="max-height:44rem">
+          <table class="ag-tbl" id="priTbl">
+            <thead><tr><th class="ag-num">Score</th><th>Band</th><th>Centre</th><th>Region</th><th>Area lead</th><th>Model</th><th>Condition</th><th>Signboard</th><th>Logo</th><th>Last reno</th><th>Key issues</th><th>Photos</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="ag-empty" id="priEmpty" hidden>No centres match.</div>
+      </section>
+    </section>
+
+    <!-- ISSUES -->
+    <section class="ag-page" data-page="issues" hidden>
+      <div class="ag-row3">
+        <section class="ag-card">
+          <h2 class="ag-card-t">What centres report</h2>
+          <p class="ag-card-n">Themes picked up from the free-text "Key issues" field. Click a theme to filter the comments below.</p>
+          <div id="themeList"></div>
+        </section>
+        <section class="ag-card">
+          <h2 class="ag-card-t">Signboard condition</h2>
+          <p class="ag-card-n">Problems ticked on the survey form (a centre can have more than one)</p>
+          <div id="signList"></div>
+          <div class="ag-sub2">Back-lit logo at reception</div>
+          <div class="ag-catbar" id="logoBar"></div>
+          <div class="ag-catleg" id="logoLeg"></div>
+        </section>
+      </div>
+      <section class="ag-card">
+        <div class="ag-tools">
+          <div><h2 class="ag-card-t" id="cmtTitle">All comments</h2><p class="ag-card-n" style="margin-bottom:0" id="cmtSub"></p></div>
+          <input class="ag-search" id="cmtSearch" type="search" placeholder="Search comments, e.g. seepage, AC">
+        </div>
+        <div class="ag-scroll" style="max-height:40rem">
+          <table class="ag-tbl" id="cmtTbl">
+            <thead><tr><th>Centre</th><th>Region</th><th>Area lead</th><th>Condition</th><th>Themes</th><th>Key issues</th><th>Photos</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="ag-empty" id="cmtEmpty" hidden>No comments match.</div>
+      </section>
+    </section>
+
+    <!-- TRACKER -->
+    <section class="ag-page" data-page="tracker" hidden>
+      <div class="ag-row2">
+        <section class="ag-card">
+          <div class="ag-tools"><div><h2 class="ag-card-t">Area lead coverage</h2><p class="ag-card-n" style="margin-bottom:0">Lowest coverage first. Click a column to sort.</p></div></div>
+          <div class="ag-scroll">
+            <table class="ag-tbl" id="alTbl">
+              <thead><tr>
+                <th><button class="ag-sortbtn" data-sort="al">Area lead</button></th>
+                <th><button class="ag-sortbtn" data-sort="region">Region</button></th>
+                <th class="ag-num"><button class="ag-sortbtn" data-sort="assigned">Assigned</button></th>
+                <th class="ag-num"><button class="ag-sortbtn" data-sort="surveyed">Surveyed</button></th>
+                <th class="ag-num"><button class="ag-sortbtn" data-sort="pending">Pending</button></th>
+                <th class="ag-num"><button class="ag-sortbtn" data-sort="coverage">Coverage</button></th>
+                <th aria-hidden="true"></th>
+              </tr></thead><tbody></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="ag-card">
+          <h2 class="ag-card-t">Pending centres</h2>
+          <p class="ag-card-n">In the survey but no submission yet</p>
+          <div class="ag-scroll">
+            <table class="ag-tbl" id="penTbl">
+              <thead><tr><th>Centre</th><th>Code</th><th>City</th><th>Region</th><th>Area lead</th><th>Regional lead</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="ag-empty" id="penEmpty" hidden>Every centre in this selection has been surveyed.</div>
+        </section>
+      </div>
+    </section>
+
+    <!-- DATA QUALITY -->
+    <section class="ag-page" data-page="quality" hidden>
+      <div class="ag-kpis">
+        <div class="ag-card"><div class="ag-eyebrow">Last renovation year</div><div class="ag-kpi-title">Unusable entries</div><div class="ag-kpi-val" id="qBad">—</div><div class="ag-kpi-row"><span>e.g. 0, 1, -4, 22025, 2027</span></div></div>
+        <div class="ag-card"><div class="ag-eyebrow">Last renovation year</div><div class="ag-kpi-title">Left blank</div><div class="ag-kpi-val" id="qBlank">—</div><div class="ag-kpi-row"><span>Not filled on the form</span></div></div>
+        <div class="ag-card"><div class="ag-eyebrow">Submissions</div><div class="ag-kpi-title">Submitted more than once</div><div class="ag-kpi-val" id="qRe">—</div><div class="ag-kpi-row"><span>Latest version is used</span></div></div>
+        <div class="ag-card"><div class="ag-eyebrow">Evidence</div><div class="ag-kpi-title">Missing photo link</div><div class="ag-kpi-val" id="qLink">—</div><div class="ag-kpi-row"><span>No Drive folder recorded</span></div></div>
+      </div>
+      <section class="ag-card">
+        <h2 class="ag-card-t">Renovation year entries that can't be read as a year</h2>
+        <p class="ag-card-n">Fix these in the sheet, or switch the form field to a year dropdown</p>
+        <div class="ag-scroll">
+          <table class="ag-tbl" id="badTbl"><thead><tr><th>Centre</th><th>Code</th><th>Region</th><th>Area lead</th><th>Submitted by</th><th>Entered</th><th>Problem</th></tr></thead><tbody></tbody></table>
+        </div>
+        <div class="ag-empty" id="badEmpty" hidden>No unreadable entries in this selection.</div>
+      </section>
+      <div class="ag-row2">
+        <section class="ag-card">
+          <h2 class="ag-card-t">Submitted more than once</h2>
+          <p class="ag-card-n">The latest submission is used in every number</p>
+          <div class="ag-scroll"><table class="ag-tbl" id="reTbl"><thead><tr><th>Centre</th><th>Region</th><th class="ag-num">Times</th><th>Submitted by</th></tr></thead><tbody></tbody></table></div>
+          <div class="ag-empty" id="reEmpty" hidden>None in this selection.</div>
+        </section>
+        <section class="ag-card">
+          <h2 class="ag-card-t">Missing photo folder link</h2>
+          <p class="ag-card-n">Surveyed, but no Drive folder link recorded</p>
+          <div class="ag-scroll"><table class="ag-tbl" id="lnTbl"><thead><tr><th>Centre</th><th>Region</th><th>Area lead</th><th class="ag-num">Photos</th></tr></thead><tbody></tbody></table></div>
+          <div class="ag-empty" id="lnEmpty" hidden>None in this selection.</div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ALL CENTRES -->
+    <section class="ag-page" data-page="centres" hidden>
+      <section class="ag-card">
+        <div class="ag-tools"><div><p class="ag-card-n" style="margin:0">Pick a region above, or search by centre, city, code or area lead. Priority chips narrow the list.</p></div>
+          <input class="ag-search" id="centreSearch" type="search" placeholder="Search centre, city, code or area lead"></div>
+        <div id="allCentres"></div>
+      </section>
+    </section>
+
+    <!-- ABOUT -->
+    <section class="ag-page" data-page="about" hidden>
+      <div class="ag-row2">
+        <section class="ag-card">
+          <h2 class="ag-card-t">How the priority score works</h2>
+          <p class="ag-card-n">0–100, higher = renovate sooner</p>
+          <ul class="ag-notes">
+            <li><b>Condition</b>: up to 50 points (1 Critical = 50, 5 Excellent = 0).</li>
+            <li><b>Model</b>: Older V6 = 20, V6 = 10, V7 = 0.</li>
+            <li><b>Signboard</b>: 5 points per problem (rough, skin change, lights dim), up to 15.</li>
+            <li><b>No back-lit logo</b> at reception: 5 points.</li>
+            <li><b>Years since last renovation</b>: up to 10 (8+ years = 10; unknown year = 5).</li>
+            <li>Bands: <b>Urgent 61–100</b>, High 46–60, Medium 31–45, Low 0–30.</li>
+          </ul>
+        </section>
+        <section class="ag-card">
+          <h2 class="ag-card-t">Where the numbers come from</h2>
+          <p class="ag-card-n">Definitions</p>
+          <ul class="ag-notes">
+            <li>Centres in scope = rows in the <b>Centers</b> tab with "In Survey" = Yes. Pickup points are excluded.</li>
+            <li>Survey answers come from the <b>Repository</b> tab. If a centre was submitted more than once, the latest submission is used.</li>
+            <li><b>Coverage</b> = centres surveyed ÷ centres in scope.</li>
+            <li>Issue themes are keyword matches on the free-text comments, so one comment can count under several themes.</li>
+            <li>Data is read live from the Google Sheet (read-only) and refreshes every 5 minutes, or with <b>Refresh data</b> above the dashboard.</li>
+          </ul>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+</div>
+
+<script>
+const ALL = 'All regions';
+const D = window.DATA;
+const CENTRES = D.centres;
+const fmt = d3.format(',');
+const pct = d3.format('.0%');
+const f2 = d3.format('.2f');
+const COND = [
+  [5, '5 · Excellent', 'var(--ag-green-d)'], [4, '4 · Good', 'var(--ag-green)'], [3, '3 · Fair', 'var(--ag-yellow)'],
+  [2, '2 · Poor', 'var(--ag-amber)'], [1, '1 · Critical', 'var(--ag-red)'], [0, 'Not surveyed', 'var(--ag-grey)'],
+];
+const COND_PILL = { 5: 'ag-p-green', 4: 'ag-p-green', 3: 'ag-p-amber', 2: 'ag-p-red', 1: 'ag-p-red' };
+const BANDS = [['Urgent', 'var(--ag-red)', 'ag-p-red'], ['High', 'var(--ag-amber)', 'ag-p-amber'], ['Medium', 'var(--ag-yellow)', 'ag-p-grey'], ['Low', 'var(--ag-green)', 'ag-p-green'], ['Not surveyed', 'var(--ag-grey)', 'ag-p-grey']];
+const BAND_COLOR = Object.fromEntries(BANDS.map(([b, c]) => [b, c]));
+const BAND_PILL = Object.fromEntries(BANDS.map(([b, , p]) => [b, p]));
+const MODEL_COLOR = { 'Older V6': 'var(--ag-red-l)', 'V6': 'var(--ag-amber)', 'V7': 'var(--ag-accent)' };
+const PAGES = {
+  dashboard: ['Center Repository', 'Renovation readiness of the collection-centre network, live from the field survey.'],
+  regions: ['Region scorecard', 'Every region side by side: coverage, condition, priority and format.'],
+  priority: ['Renovation priority', 'Which centres to renovate first, scored 0–100.'],
+  issues: ['Issues reported', 'What field teams reported at each centre, grouped into themes.'],
+  tracker: ['Survey tracker', 'Coverage by area lead and the centres still pending.'],
+  quality: ['Data quality', 'Entries in the sheet that need fixing at source.'],
+  centres: ['All centres', 'Every centre in the survey with its condition, priority and photos.'],
+  about: ['About the data', 'Where the numbers come from and how they are defined.'],
+};
+const st = { page: 'dashboard', region: ALL, model: 'All', drill: 'All', priBand: 'Urgent', theme: null };
+
+/* ---------- helpers ---------- */
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = text; return e; }
+function tipBox(node) { d3.select(node).selectAll(':scope > .ag-tip').remove(); return d3.select(node).append('div').attr('class', 'ag-tip').style('display', 'none'); }
+function tipAt(node, tip, e) {
+  const [px, py] = d3.pointer(e, node);
+  const tw = tip.node().offsetWidth, th = tip.node().offsetHeight;
+  tip.style('left', `${Math.min(Math.max(0, px + 12), node.clientWidth - tw)}px`).style('top', `${Math.max(0, py - th - 10)}px`);
+}
+function tipFill(tip, head, lines) {
+  tip.style('display', null).selectAll('*').remove();
+  tip.append('div').attr('class', 'ag-tip-h').text(head);
+  lines.forEach(([c, t]) => { const d = tip.append('div'); if (c) d.append('i').attr('class', 'ag-sw').style('background', c); d.append('span').text(t); });
+}
+function textW(svg, s) { const t = svg.append('text').text(s); const w = t.node().getComputedTextLength(); t.remove(); return w; }
+const band = (r) => (r.sv ? r.band : 'Not surveyed');
+const clip = (t, n = 160) => { const sp = el('span', null, !t ? '—' : t.length > n ? t.slice(0, n).trimEnd() + '…' : t); if (t && t.length > n) sp.title = t; return sp; };
+const pill = (txt, cls) => el('span', 'ag-st ' + cls, txt);
+const condPill = (r) => (r.sv && r.cond ? pill(`${r.cond} · ${['', 'Critical', 'Poor', 'Fair', 'Good', 'Excellent'][r.cond]}`, COND_PILL[r.cond]) : pill('Not surveyed', 'ag-p-grey'));
+const photoLink = (r) => { if (!r.link) return el('span', null, r.sv ? '—' : ''); const a = el('a', 'ag-link', `${r.photos || 0} ↗`); a.href = r.link; a.target = '_blank'; a.rel = 'noopener'; return a; };
+const sortDir = (a, b, k, dir) => (typeof a[k] === 'number' || typeof b[k] === 'number' ? ((a[k] ?? -1) - (b[k] ?? -1)) : d3.ascending(a[k], b[k])) * dir;
+function covColor(v) { return v >= 0.95 ? 'var(--ag-green)' : v >= 0.8 ? 'var(--ag-amber)' : 'var(--ag-red)'; }
+function covClass(v) { return v >= 0.95 ? 'ag-green' : v >= 0.8 ? 'ag-amber' : 'ag-red'; }
+function avgClass(v) { return v >= 4 ? 'ag-green' : v >= 3.5 ? 'ag-amber' : 'ag-red'; }
+function bar(v, color) { const b = el('div', 'ag-bar'); const i = el('i'); i.style.width = `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`; i.style.background = color; b.append(i); return b; }
+function mini(node, parts, total) { node.replaceChildren(...parts.filter((p) => p[0] > 0).map(([v, c]) => { const i = el('i'); i.style.width = `${(v / (total || 1)) * 100}%`; i.style.background = c; return i; })); }
+function fill(id, rows, render) {
+  const tb = document.getElementById(id).tBodies[0];
+  tb.replaceChildren(...rows.map((r) => { const tr = el('tr'); render(r, tr).forEach((c) => { const td = el('td'); if (Array.isArray(c)) { const [v, cls] = c; if (v instanceof Node) td.append(v); else td.textContent = v ?? ''; if (cls) td.className = cls; } else if (c instanceof Node) td.append(c); else td.textContent = c ?? ''; tr.append(td); }); return tr; }));
+  return rows.length;
+}
+function setEmpty(tblId, emptyId, n) { document.getElementById(tblId).hidden = !n; document.getElementById(emptyId).hidden = !!n; }
+function catbar(barId, legId, items) {
+  const barN = document.getElementById(barId), legN = document.getElementById(legId);
+  const total = d3.sum(items, (d) => d[1]) || 1;
+  const tip = tipBox(barN.parentNode);
+  barN.replaceChildren(...items.filter((d) => d[1] > 0).map(([label, v, c]) => {
+    const i = el('i'); i.style.width = `${(v / total) * 100}%`; i.style.background = c;
+    i.addEventListener('mousemove', (e) => { tipFill(tip, label, [[c, `${fmt(v)} centres · ${pct(v / total)}`]]); tipAt(barN.parentNode, tip, e); });
+    i.addEventListener('mouseleave', () => tip.style('display', 'none'));
+    return i;
+  }));
+  legN.replaceChildren(...items.map(([label, v, c]) => { const d = el('div', 'ag-dl-r'); const sw = el('i', 'ag-sw'); sw.style.background = c; d.append(sw, el('span', null, label), el('b', null, `${fmt(v)} · ${pct(v / total)}`)); return d; }));
+}
+function hbars(nodeId, items, color, onClick, active) {
+  const max = d3.max(items, (d) => d[1]) || 1;
+  document.getElementById(nodeId).replaceChildren(...items.map(([label, v]) => {
+    const r = el('div', 'ag-hb' + (active === label ? ' ag-on' : ''));
+    r.append(el('span', null, label), bar(v / max, color), el('b', null, fmt(v)));
+    if (onClick) r.addEventListener('click', () => onClick(label)); else r.style.cursor = 'default';
+    return r;
+  }));
+}
+function downloadCSV(rows, cols, name) {
+  const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = '﻿' + [cols.map((c) => c[1]).join(','), ...rows.map((r) => cols.map((c) => esc(typeof c[0] === 'function' ? c[0](r) : r[c[0]])).join(','))].join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = name; document.body.append(a); a.click(); a.remove();
+}
+
+/* ---------- aggregation ---------- */
+function scope() {
+  const inR = CENTRES.filter((c) => st.region === ALL || c.region === st.region);
+  const rows = st.model === 'All' ? inR : inR.filter((c) => c.sv && c.model === st.model);
+  return rows;
+}
+function summarise(rows) {
+  const sv = rows.filter((r) => r.sv);
+  const n = (f) => sv.filter(f).length;
+  return {
+    centres: rows.length, surveyed: sv.length, pending: rows.length - sv.length, coverage: rows.length ? sv.length / rows.length : 0,
+    avg: sv.length ? d3.mean(sv.filter((r) => r.cond), (r) => r.cond) : null,
+    poor: n((r) => r.cond && r.cond <= 2), urgent: n((r) => r.band === 'Urgent'), high: n((r) => r.band === 'High'),
+    medium: n((r) => r.band === 'Medium'), low: n((r) => r.band === 'Low'),
+    older: n((r) => r.model === 'Older V6'), v6: n((r) => r.model === 'V6'), v7: n((r) => r.model === 'V7'),
+    sign: n((r) => r.sign_n > 0), nologo: n((r) => r.logo === 'No'), photos: d3.sum(sv, (r) => r.photos || 0),
+    regions: new Set(rows.map((r) => r.region)).size, cities: new Set(rows.map((r) => r.city)).size,
+    cond: Object.fromEntries([1, 2, 3, 4, 5].map((k) => [k, n((r) => r.cond === k)])),
+  };
+}
+function byRegion(rows) { return d3.groups(rows, (r) => r.region).map(([region, rs]) => ({ region, ...summarise(rs) })); }
+
+/* ---------- charts ---------- */
+function sparkline(node, values, color) {
+  node.replaceChildren();
+  if (!values.length) return;
+  const W = Math.max(120, node.clientWidth || 240), H = 52, pad = 3;
+  const svg = d3.select(node).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('preserveAspectRatio', 'none');
+  const x = d3.scaleLinear([0, Math.max(1, values.length - 1)], [pad, W - pad]);
+  const y = d3.scaleLinear([0, Math.max(1, d3.max(values, (v) => v.v))], [H - pad, pad + 4]);
+  const id = 'g' + Math.random().toString(36).slice(2, 8);
+  const grad = svg.append('defs').append('linearGradient').attr('id', id).attr('x1', 0).attr('x2', 0).attr('y1', 0).attr('y2', 1);
+  [[0, .26], [.25, .16], [.5, .08], [.75, .03], [1, 0]].forEach(([o, a]) => grad.append('stop').attr('offset', o).attr('style', `stop-color:${color};stop-opacity:${a}`));
+  svg.append('path').attr('d', d3.area().x((d, i) => x(i)).y0(H).y1((d) => y(d.v)).curve(d3.curveMonotoneX)(values)).attr('fill', `url(#${id})`);
+  svg.append('path').attr('d', d3.line().x((d, i) => x(i)).y((d) => y(d.v)).curve(d3.curveMonotoneX)(values)).attr('fill', 'none').style('stroke', color).attr('stroke-width', 2).attr('vector-effect', 'non-scaling-stroke');
+  const tip = tipBox(node);
+  svg.append('rect').attr('width', W).attr('height', H).attr('fill', 'transparent')
+    .on('mousemove', (e) => { const [mx] = d3.pointer(e); const i = Math.max(0, Math.min(values.length - 1, Math.round(x.invert(mx)))); tipFill(tip, values[i].label, [[null, values[i].text]]); tipAt(node, tip, e); })
+    .on('mouseleave', () => tip.style('display', 'none'));
+}
+function drawDonut(s) {
+  const node = document.getElementById('donut');
+  node.replaceChildren();
+  const size = 184, r = size / 2, inner = r * 0.7;
+  const vals = COND.map(([k, label, c]) => ({ k, label, c, v: k ? s.cond[k] : s.pending }));
+  const svg = d3.select(node).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${size} ${size}`);
+  const g = svg.append('g').attr('transform', `translate(${r},${r})`);
+  const arc = d3.arc().innerRadius(inner).outerRadius(r - 2), arcH = d3.arc().innerRadius(inner).outerRadius(r);
+  const tip = tipBox(node);
+  g.selectAll('path').data(d3.pie().sort(null).value((d) => d.v)(vals.filter((d) => d.v > 0))).join('path').attr('d', arc).style('fill', (d) => d.data.c)
+    .style('stroke', 'var(--color-panel)').attr('stroke-width', 1.5)
+    .on('mousemove', function (e, d) { d3.select(this).attr('d', arcH); tipFill(tip, d.data.label, [[d.data.c, `${fmt(d.data.v)} centres · ${pct(d.data.v / (s.centres || 1))}`]]); tipAt(node, tip, e); })
+    .on('mouseleave', function () { d3.select(this).attr('d', arc); tip.style('display', 'none'); });
+  g.append('text').attr('text-anchor', 'middle').attr('dy', '0.1em').style('font-size', '30px').style('font-weight', 700).style('fill', 'var(--ag-accent)').text(s.avg ? f2(s.avg) : '—');
+  g.append('text').attr('text-anchor', 'middle').attr('dy', '1.9em').style('font-size', '10.5px').style('letter-spacing', '.08em').text('AVG / 5');
+  document.getElementById('donutLegend').replaceChildren(...vals.map(({ label, c, v }) => { const d = el('div', 'ag-dl-r'); const sw = el('i', 'ag-sw'); sw.style.background = c; d.append(sw, el('span', null, label), el('b', null, `${fmt(v)} · ${pct(v / (s.centres || 1))}`)); return d; }));
+}
+function dailyRows() {
+  const rows = D.daily.filter((d) => st.region === ALL || d.region === st.region);
+  const days = d3.rollups(rows, (v) => ({ fresh: d3.sum(v, (d) => d.fresh), resub: d3.sum(v, (d) => d.resub), photos: d3.sum(v, (d) => d.photos) }), (d) => d.d)
+    .sort((a, b) => d3.ascending(a[0], b[0])).map(([d, o]) => ({ d, ...o }));
+  let cum = 0; days.forEach((r) => { cum += r.fresh; r.cum = cum; });
+  return days;
+}
+function drawTimeline(rows) {
+  const node = document.getElementById('timeline');
+  node.replaceChildren();
+  if (!rows.length) { node.append(el('div', 'ag-empty', 'No submissions yet.')); return; }
+  const W = Math.max(320, node.clientWidth || 900), H = 260, mt = 14, mb = 30;
+  const svg = d3.select(node).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+  const y = d3.scaleLinear([0, Math.max(1, d3.max(rows, (r) => r.fresh + r.resub))], [H - mb, mt]).nice();
+  const y2 = d3.scaleLinear([0, Math.max(1, d3.max(rows, (r) => r.cum))], [H - mb, mt]).nice();
+  const ml = Math.max(...y.ticks(5).map((t) => textW(svg, fmt(t)))) + 10, mr = Math.max(...y2.ticks(5).map((t) => textW(svg, fmt(t)))) + 10;
+  const x = d3.scaleBand(rows.map((r) => r.d), [ml, W - mr]).padding(0.3);
+  y.ticks(5).forEach((t) => { svg.append('line').attr('x1', ml).attr('x2', W - mr).attr('y1', y(t)).attr('y2', y(t)).style('stroke', 'var(--cds-chart-grid)'); svg.append('text').attr('x', ml - 8).attr('y', y(t)).attr('dy', '0.35em').attr('text-anchor', 'end').text(fmt(t)); });
+  y2.ticks(5).forEach((t) => svg.append('text').attr('x', W - mr + 8).attr('y', y2(t)).attr('dy', '0.35em').text(fmt(t)));
+  const bw = Math.min(34, x.bandwidth());
+  rows.forEach((r) => {
+    const x0 = x(r.d) + (x.bandwidth() - bw) / 2;
+    if (r.fresh) svg.append('rect').attr('x', x0).attr('width', bw).attr('y', y(r.fresh)).attr('height', y(0) - y(r.fresh)).attr('rx', 3).style('fill', 'var(--ag-accent)');
+    if (r.resub) svg.append('rect').attr('x', x0).attr('width', bw).attr('y', y(r.fresh + r.resub)).attr('height', y(r.fresh) - y(r.fresh + r.resub)).attr('rx', 3).style('fill', 'var(--ag-teal)');
+  });
+  svg.append('path').attr('d', d3.line().x((d) => x(d.d) + x.bandwidth() / 2).y((d) => y2(d.cum))(rows)).attr('fill', 'none').style('stroke', 'var(--ag-amber)').attr('stroke-width', 2.5).attr('stroke-linejoin', 'round');
+  svg.selectAll('circle.p').data(rows).join('circle').attr('cx', (d) => x(d.d) + x.bandwidth() / 2).attr('cy', (d) => y2(d.cum)).attr('r', 3).style('fill', 'var(--ag-amber)');
+  const lab = (d) => d3.utcFormat('%-d %b')(new Date(d + 'T00:00:00Z'));
+  const step = Math.ceil(rows.length / Math.max(1, Math.floor((W - ml - mr) / 56)));
+  rows.forEach((r, i) => { if (i % step === 0) svg.append('text').attr('x', x(r.d) + x.bandwidth() / 2).attr('y', H - mb + 18).attr('text-anchor', 'middle').text(lab(r.d)); });
+  svg.append('line').attr('x1', ml).attr('x2', W - mr).attr('y1', y(0)).attr('y2', y(0)).style('stroke', 'var(--cds-chart-axis)');
+  const tip = tipBox(node);
+  const hl = svg.append('rect').attr('y', mt).attr('height', H - mt - mb).attr('width', x.step()).style('fill', 'var(--color-fg)').attr('opacity', 0).attr('pointer-events', 'none');
+  svg.append('g').selectAll('rect').data(rows).join('rect').attr('x', (d) => x(d.d) - (x.step() - x.bandwidth()) / 2).attr('width', x.step()).attr('y', mt).attr('height', H - mt - mb).attr('fill', 'transparent')
+    .on('mousemove', (e, d) => { hl.attr('x', x(d.d) - (x.step() - x.bandwidth()) / 2).attr('opacity', 0.05); tipFill(tip, d3.utcFormat('%A, %-d %B %Y')(new Date(d.d + 'T00:00:00Z')), [['var(--ag-accent)', `Centres surveyed: ${fmt(d.fresh)}`], ['var(--ag-teal)', `Re-submissions: ${fmt(d.resub)}`], ['var(--ag-amber)', `Running total: ${fmt(d.cum)}`]]); tipAt(node, tip, e); })
+    .on('mouseleave', () => { hl.attr('opacity', 0); tip.style('display', 'none'); });
+}
+
+/* ---------- centre lists ---------- */
+const BORDER = { Urgent: 0, High: 1, Medium: 2, Low: 3, 'Not surveyed': 4 };
+let scrollDrill = false;
+function renderCentres(box, rows, title, onClose) {
+  box.replaceChildren();
+  const head = el('div', 'ag-drill-h'), left = el('div');
+  left.append(el('div', 'ag-card-t', title));
+  if (onClose) { const c = el('button', 'ag-close', 'Close ×'); c.addEventListener('click', (e) => { e.stopPropagation(); onClose(); }); left.append(c); }
+  const chips = el('div', 'ag-chips'), counts = {};
+  rows.forEach((r) => { counts[band(r)] = (counts[band(r)] || 0) + 1; });
+  if (st.drill !== 'All' && !counts[st.drill]) st.drill = 'All';
+  ['All', ...BANDS.map((b) => b[0])].forEach((label) => {
+    const n = label === 'All' ? rows.length : counts[label] || 0;
+    if (label !== 'All' && !n) return;
+    const b = el('button', 'ag-chipbtn', label === 'All' ? 'All centres' : label); b.append(el('b', null, fmt(n)));
+    b.setAttribute('aria-pressed', String(st.drill === label));
+    b.addEventListener('click', (e) => { e.stopPropagation(); st.drill = label; draw(); });
+    chips.append(b);
+  });
+  head.append(left, chips); box.append(head);
+  const shown = (st.drill === 'All' ? rows : rows.filter((r) => band(r) === st.drill)).slice()
+    .sort((a, b) => BORDER[band(a)] - BORDER[band(b)] || (b.score ?? -1) - (a.score ?? -1) || d3.ascending(a.centre, b.centre));
+  if (!shown.length) { box.append(el('div', 'ag-empty', 'No centres match.')); return; }
+  const wrap = el('div', 'ag-scroll'); wrap.style.maxHeight = '28rem';
+  const t = el('table', 'ag-tbl'); const thead = el('thead'), hr = el('tr');
+  ['Centre', 'City', 'Code', 'Area lead', 'Model', 'Condition', 'Priority', 'Score', 'Last reno', 'Photos'].forEach((h) => hr.append(el('th', h === 'Score' ? 'ag-num' : null, h)));
+  thead.append(hr);
+  const tb = el('tbody');
+  shown.forEach((r) => {
+    const tr = el('tr');
+    const cells = [[r.centre, 'ag-strong'], [r.city], [r.code], [r.al], [r.model || '—'], [condPill(r)], [pill(band(r), BAND_PILL[band(r)])], [r.score ?? '—', 'ag-num'], [r.reno || '—'], [photoLink(r)]];
+    cells.forEach(([v, cls]) => { const td = el('td', cls || null); if (v instanceof Node) td.append(v); else td.textContent = v; tr.append(td); });
+    tb.append(tr);
+  });
+  t.append(thead, tb); wrap.append(t); box.append(wrap);
+}
+function drawRegionList(regs, rowsAll) {
+  const list = document.getElementById('rbList');
+  const mode = document.getElementById('rbSort').value;
+  const data = regs.slice().sort((a, b) => mode === 'low' ? (a.avg ?? 9) - (b.avg ?? 9) : mode === 'urgent' ? b.urgent - a.urgent : mode === 'cov' ? a.coverage - b.coverage : b.centres - a.centres);
+  list.replaceChildren(...data.map((r) => {
+    const cur = st.region;
+    const row = el('div', 'ag-rb' + (r.region === cur ? ' ag-on' : ''));
+    row.addEventListener('click', () => { scrollDrill = r.region !== cur; setRegion(r.region === cur ? ALL : r.region); });
+    const top = el('div', 'ag-rb-top'), stats = el('div', 'ag-rb-stats');
+    const p = el('b', null, r.avg ? f2(r.avg) : '—'); p.style.color = r.avg >= 4 ? '#059669' : r.avg >= 3.5 ? '#B45309' : '#DC2626';
+    stats.append(p, document.createTextNode(` avg · ${fmt(r.centres)} centres · ${pct(r.coverage)} surveyed · ${fmt(r.urgent)} urgent · ${fmt(r.poor)} poor/critical`));
+    top.append(el('div', 'ag-rb-name', r.region), stats);
+    const b = el('div', 'ag-rb-bar');
+    COND.forEach(([k, , c]) => { const v = k ? r.cond[k] : r.pending; if (v) { const i = el('i'); i.style.width = `${(v / (r.centres || 1)) * 100}%`; i.style.background = c; b.append(i); } });
+    row.append(top, b);
+    if (r.region !== cur) return [row];
+    const detail = el('div', 'ag-drill'); detail.addEventListener('click', (e) => e.stopPropagation());
+    renderCentres(detail, rowsAll.filter((c) => c.region === r.region), `Centres in ${r.region}`, () => setRegion(ALL));
+    if (scrollDrill) { scrollDrill = false; requestAnimationFrame(() => row.scrollIntoView({ block: 'start', behavior: 'smooth' })); }
+    return [row, detail];
+  }).flat());
+}
+
+/* ---------- navigation ---------- */
+function setRegion(r) { st.region = r || ALL; st.drill = 'All'; draw(); }
+function showPage(p, push) {
+  if (!PAGES[p]) p = 'dashboard';
+  st.page = p; st.drill = 'All';
+  document.querySelectorAll('.ag-page').forEach((s) => { s.hidden = s.dataset.page !== p; });
+  document.querySelectorAll('.ag-nav').forEach((b) => (b.dataset.go === p ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')));
+  document.getElementById('pageTitle').textContent = PAGES[p][0];
+  document.getElementById('pageSub').textContent = PAGES[p][1];
+  if (push) { try { history.replaceState(null, '', '#' + p); } catch (e) {} document.getElementById('top').scrollIntoView({ block: 'start' }); }
+  draw();
+}
+document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => showPage(b.dataset.go, true)));
+document.querySelectorAll('#modelSeg button').forEach((b) => b.addEventListener('click', () => { st.model = b.dataset.model; draw(); }));
+const sel = document.getElementById('regionSel');
+sel.addEventListener('change', () => setRegion(sel.value));
+document.getElementById('resetBtn').addEventListener('click', () => { st.region = ALL; st.model = 'All'; st.drill = 'All'; st.theme = null; draw(); });
+['rbSort'].forEach((id) => document.getElementById(id).addEventListener('change', () => draw()));
+['priSearch', 'cmtSearch', 'centreSearch'].forEach((id) => document.getElementById(id).addEventListener('input', () => draw()));
+const regionSort = { key: 'avg', dir: 1 }, alSort = { key: 'coverage', dir: 1 };
+function wireSort(id, s) {
+  document.querySelectorAll(`#${id} .ag-sortbtn`).forEach((b) => b.addEventListener('click', () => {
+    const k = b.dataset.sort, txt = ['region', 'al'].includes(k);
+    s.dir = s.key === k ? -s.dir : (txt ? 1 : -1); s.key = k; draw();
+  }));
+}
+wireSort('regionTbl', regionSort); wireSort('alTbl', alSort);
+document.getElementById('regionTbl').addEventListener('click', (e) => {
+  if (e.target.closest('button')) return;
+  const tr = e.target.closest('tr[data-key]');
+  if (tr) { const on = tr.dataset.key !== st.region; setRegion(on ? tr.dataset.key : ALL); if (on) setTimeout(() => document.getElementById('regionCentresCard').scrollIntoView({ block: 'start', behavior: 'smooth' }), 150); }
+});
+let priRows = [];
+document.getElementById('priCsv').addEventListener('click', () => downloadCSV(priRows, [
+  ['score', 'Score'], [(r) => band(r), 'Band'], ['code', 'Center Code'], ['centre', 'Center Name'], ['region', 'Region'], ['city', 'City'], ['al', 'Area Lead'],
+  ['model', 'Model'], ['layout', 'Layout'], ['cond', 'Condition'], ['sign', 'Signboard'], ['logo', 'Back-lit Logo'], ['reno', 'Last Renovation (entered)'], ['issues', 'Key Issues'], ['link', 'Photo Folder'],
+], 'renovation_priority.csv'));
+
+/* ---------- main draw ---------- */
+function draw() {
+  const rows = scope();
+  const s = summarise(rows);
+  const sv = rows.filter((r) => r.sv);
+  const regs = byRegion(rows);
+
+  // filters + header
+  const regions = [ALL, ...Array.from(new Set(CENTRES.map((c) => c.region))).sort()];
+  sel.replaceChildren(...regions.map((r) => new Option(r, r))); sel.value = st.region;
+  document.querySelectorAll('#modelSeg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.model === st.model)));
+  document.getElementById('showRegion').textContent = st.region;
+  document.getElementById('showModel').textContent = st.model;
+  document.getElementById('showAsOf').textContent = D.meta.as_of || '';
+  document.getElementById('asOfFoot').textContent = D.meta.as_of ? 'Updated ' + D.meta.as_of : '';
+  document.getElementById('gAvg').textContent = s.avg ? f2(s.avg) : '—';
+  document.getElementById('gSv').textContent = `${fmt(s.surveyed)} / ${fmt(s.centres)}`;
+  document.getElementById('gCov').textContent = pct(s.coverage);
+
+  // sidebar counts
+  const themed = sv.filter((r) => r.themes && r.themes.length);
+  const badYear = sv.filter((r) => ['Future year', 'Implausible year', 'Years-ago / short number', 'Unreadable'].includes(r.reno_p));
+  document.getElementById('cntUrg').textContent = fmt(s.urgent);
+  document.getElementById('cntIss').textContent = fmt(themed.length);
+  document.getElementById('cntPen').textContent = fmt(s.pending);
+  document.getElementById('cntDq').textContent = fmt(badYear.length);
+
+  if (st.page === 'dashboard') {
+    document.getElementById('kSv').textContent = fmt(s.surveyed);
+    document.getElementById('kTot').textContent = fmt(s.centres);
+    document.getElementById('pillCov').textContent = `Coverage ${pct(s.coverage)}`;
+    mini(document.getElementById('miniCov'), [[s.surveyed, 'var(--ag-accent)'], [s.pending, 'var(--ag-grey)']], s.centres);
+    document.getElementById('kPoor').textContent = fmt(s.poor);
+    mini(document.getElementById('miniCond'), [[s.cond[5], 'var(--ag-green-d)'], [s.cond[4], 'var(--ag-green)'], [s.cond[3], 'var(--ag-yellow)'], [s.cond[2], 'var(--ag-amber)'], [s.cond[1], 'var(--ag-red)']], s.surveyed);
+    document.getElementById('kUrg').textContent = fmt(s.urgent);
+    document.getElementById('kHigh').textContent = fmt(s.high);
+    mini(document.getElementById('miniBand'), [[s.low, 'var(--ag-green)'], [s.medium, 'var(--ag-yellow)'], [s.high, 'var(--ag-amber)'], [s.urgent, 'var(--ag-red)']], s.surveyed);
+    document.getElementById('kOld').textContent = fmt(s.older);
+    document.getElementById('kV7').textContent = pct(s.surveyed ? s.v7 / s.surveyed : 0);
+    mini(document.getElementById('miniModel'), [[s.v7, MODEL_COLOR.V7], [s.v6, MODEL_COLOR.V6], [s.older, MODEL_COLOR['Older V6']]], s.surveyed);
+    document.getElementById('kSign').textContent = fmt(s.sign);
+    document.getElementById('kSignP').textContent = pct(s.surveyed ? s.sign / s.surveyed : 0);
+    document.getElementById('kLogo').textContent = fmt(s.nologo);
+    document.getElementById('kPho').textContent = fmt(s.photos);
+    document.getElementById('kPhoA').textContent = s.surveyed ? (s.photos / s.surveyed).toFixed(1) : '—';
+    document.getElementById('kReg').textContent = fmt(s.regions);
+    document.getElementById('kCity').textContent = fmt(s.cities);
+    const days = dailyRows();
+    sparkline(document.getElementById('spSub'), days.map((d) => ({ v: d.photos, label: d3.utcFormat('%-d %b %Y')(new Date(d.d + 'T00:00:00Z')), text: `${fmt(d.photos)} photos uploaded` })), 'var(--ag-accent)');
+    drawDonut(s);
+    catbar('bandBar', 'bandLeg', [['Urgent', s.urgent, BAND_COLOR.Urgent], ['High', s.high, BAND_COLOR.High], ['Medium', s.medium, BAND_COLOR.Medium], ['Low', s.low, BAND_COLOR.Low]]);
+    const lay = d3.rollups(sv, (v) => v.length, (r) => r.layout || 'Unknown').sort((a, b) => b[1] - a[1]);
+    const LAYC = ['var(--ag-accent)', '#818CF8', 'var(--ag-teal)', 'var(--ag-amber)', 'var(--ag-red-l)', '#C4B5FD', 'var(--ag-grey)'];
+    catbar('layBar', 'layLeg', lay.map(([k, v], i) => [k, v, LAYC[i % LAYC.length]]));
+    drawTimeline(days);
+    drawRegionList(regs, rows);
+  }
+
+  if (st.page === 'regions') {
+    const tbRows = regs.slice().sort((a, b) => sortDir(a, b, regionSort.key, regionSort.dir));
+    fill('regionTbl', tbRows, (r) => [[r.region, 'ag-strong'], [fmt(r.centres), 'ag-num'], [fmt(r.surveyed), 'ag-num'], [pct(r.coverage), 'ag-num ' + covClass(r.coverage)],
+      [r.avg ? f2(r.avg) : '—', 'ag-num ' + avgClass(r.avg)], [fmt(r.poor), 'ag-num ag-red'], [fmt(r.urgent), 'ag-num ag-red'], [fmt(r.high), 'ag-num ag-amber'],
+      [fmt(r.older), 'ag-num'], [fmt(r.v7), 'ag-num'], [fmt(r.sign), 'ag-num'], [fmt(r.nologo), 'ag-num'], [bar((r.avg || 0) / 5, r.avg >= 4 ? 'var(--ag-green)' : r.avg >= 3.5 ? 'var(--ag-amber)' : 'var(--ag-red)')]]);
+    document.querySelectorAll('#regionTbl tbody tr').forEach((tr, i) => { tr.className = 'ag-click' + (tbRows[i].region === st.region ? ' ag-sel' : ''); tr.dataset.key = tbRows[i].region; });
+    document.querySelectorAll('#regionTbl th').forEach((th) => { const b = th.querySelector('button'); if (b) th.setAttribute('aria-sort', b.dataset.sort === regionSort.key ? (regionSort.dir > 0 ? 'ascending' : 'descending') : 'none'); });
+    const card = document.getElementById('regionCentresCard');
+    card.hidden = st.region === ALL;
+    if (!card.hidden) renderCentres(document.getElementById('regionCentres'), rows, `Centres in ${st.region}`, () => setRegion(ALL));
+  }
+
+  if (st.page === 'priority') {
+    const counts = {}; sv.forEach((r) => { counts[r.band] = (counts[r.band] || 0) + 1; });
+    const chips = document.getElementById('priChips');
+    chips.replaceChildren(...['All', 'Urgent', 'High', 'Medium', 'Low'].map((label) => {
+      const b = el('button', 'ag-chipbtn', label === 'All' ? 'All surveyed' : label); b.append(el('b', null, fmt(label === 'All' ? sv.length : counts[label] || 0)));
+      b.setAttribute('aria-pressed', String(st.priBand === label)); b.addEventListener('click', () => { st.priBand = label; draw(); }); return b;
+    }));
+    const q = document.getElementById('priSearch').value.trim().toLowerCase();
+    priRows = sv.filter((r) => st.priBand === 'All' || r.band === st.priBand)
+      .filter((r) => !q || [r.centre, r.city, r.code, r.al, r.issues].join(' ').toLowerCase().includes(q))
+      .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (a.cond ?? 9) - (b.cond ?? 9));
+    const n = fill('priTbl', priRows, (r) => {
+      const sc = el('div'); sc.style.display = 'flex'; sc.style.alignItems = 'center'; sc.style.gap = '.5rem'; sc.style.justifyContent = 'flex-end';
+      sc.append(el('b', null, r.score ?? '—'), bar((r.score || 0) / 100, BAND_COLOR[r.band] || 'var(--ag-grey)'));
+      return [[sc, 'ag-num'], [pill(r.band, BAND_PILL[r.band])], [r.centre, 'ag-strong'], [r.region], [r.al], [r.model], [condPill(r)], [r.sign || '—'], [r.logo || '—'], [r.reno || '—'], [clip(r.issues), 'ag-wrap'], [photoLink(r)]];
+    });
+    setEmpty('priTbl', 'priEmpty', n);
+  }
+
+  if (st.page === 'issues') {
+    const tc = {}; themed.forEach((r) => r.themes.forEach((t) => { tc[t] = (tc[t] || 0) + 1; }));
+    const themes = Object.entries(tc).sort((a, b) => b[1] - a[1]);
+    if (st.theme && !tc[st.theme]) st.theme = null;
+    hbars('themeList', themes, 'var(--ag-accent)', (t) => { st.theme = st.theme === t ? null : t; draw(); }, st.theme);
+    const sc = {}; sv.forEach((r) => (r.sign || '').split(',').map((x) => x.trim()).filter((x) => x && x.toLowerCase() !== 'good').forEach((x) => { const k = x.charAt(0).toUpperCase() + x.slice(1).toLowerCase(); sc[k] = (sc[k] || 0) + 1; }));
+    hbars('signList', [['Good (no problem)', sv.filter((r) => !r.sign_n).length], ...Object.entries(sc).sort((a, b) => b[1] - a[1])], 'var(--ag-amber)');
+    catbar('logoBar', 'logoLeg', [['Back-lit logo present', sv.filter((r) => r.logo === 'Yes').length, 'var(--ag-green)'], ['No back-lit logo', s.nologo, 'var(--ag-red-l)'], ['Not recorded', sv.filter((r) => !r.logo).length, 'var(--ag-grey)']]);
+    const q = document.getElementById('cmtSearch').value.trim().toLowerCase();
+    const cm = sv.filter((r) => (r.issues || '').trim()).filter((r) => !st.theme || (r.themes || []).includes(st.theme)).filter((r) => !q || [r.issues, r.centre, r.city].join(' ').toLowerCase().includes(q))
+      .sort((a, b) => (a.cond ?? 9) - (b.cond ?? 9));
+    document.getElementById('cmtTitle').textContent = st.theme ? `Comments: ${st.theme}` : 'All comments';
+    document.getElementById('cmtSub').textContent = `${fmt(themed.length)} of ${fmt(sv.length)} surveyed centres reported at least one issue. Worst condition first.`;
+    const n = fill('cmtTbl', cm, (r) => { const th = el('div'); (r.themes || []).forEach((t) => th.append(el('span', 'ag-theme', t))); return [[r.centre, 'ag-strong'], [r.region], [r.al], [condPill(r)], [th], [clip(r.issues, 260), 'ag-wrap'], [photoLink(r)]]; });
+    setEmpty('cmtTbl', 'cmtEmpty', n);
+  }
+
+  if (st.page === 'tracker') {
+    const al = d3.groups(rows, (r) => r.al, (r) => r.region).flatMap(([a, rs]) => rs.map(([region, v]) => { const sN = v.filter((r) => r.sv).length; return { al: a || '—', region, assigned: v.length, surveyed: sN, pending: v.length - sN, coverage: v.length ? sN / v.length : 0 }; }))
+      .sort((a, b) => sortDir(a, b, alSort.key, alSort.dir) || b.pending - a.pending);
+    fill('alTbl', al, (r) => [[r.al, 'ag-strong'], [r.region], [fmt(r.assigned), 'ag-num'], [fmt(r.surveyed), 'ag-num'], [fmt(r.pending), 'ag-num' + (r.pending ? ' ag-red' : '')], [pct(r.coverage), 'ag-num ' + covClass(r.coverage)], [bar(r.coverage, covColor(r.coverage))]]);
+    document.querySelectorAll('#alTbl th').forEach((th) => { const b = th.querySelector('button'); if (b) th.setAttribute('aria-sort', b.dataset.sort === alSort.key ? (alSort.dir > 0 ? 'ascending' : 'descending') : 'none'); });
+    const pen = rows.filter((r) => !r.sv).sort((a, b) => d3.ascending(a.region, b.region) || d3.ascending(a.al, b.al));
+    const n = fill('penTbl', pen, (r) => [[r.centre, 'ag-strong'], [r.code], [r.city], [r.region], [r.al], [r.rl]]);
+    setEmpty('penTbl', 'penEmpty', n);
+  }
+
+  if (st.page === 'quality') {
+    const blank = sv.filter((r) => r.reno_p === 'Blank'), re = sv.filter((r) => r.times > 1), nolink = sv.filter((r) => !r.link);
+    document.getElementById('qBad').textContent = fmt(badYear.length);
+    document.getElementById('qBlank').textContent = fmt(blank.length);
+    document.getElementById('qRe').textContent = fmt(re.length);
+    document.getElementById('qLink').textContent = fmt(nolink.length);
+    setEmpty('badTbl', 'badEmpty', fill('badTbl', badYear, (r) => [[r.centre, 'ag-strong'], [r.code], [r.region], [r.al], [r.by], [r.reno, 'ag-red'], [r.reno_p]]));
+    setEmpty('reTbl', 'reEmpty', fill('reTbl', re.sort((a, b) => b.times - a.times), (r) => [[r.centre, 'ag-strong'], [r.region], [fmt(r.times), 'ag-num'], [r.by]]));
+    setEmpty('lnTbl', 'lnEmpty', fill('lnTbl', nolink, (r) => [[r.centre, 'ag-strong'], [r.region], [r.al], [fmt(r.photos || 0), 'ag-num']]));
+  }
+
+  if (st.page === 'centres') {
+    const q = document.getElementById('centreSearch').value.trim().toLowerCase();
+    const list = q ? rows.filter((r) => [r.centre, r.city, r.code, r.region, r.al].join(' ').toLowerCase().includes(q)) : rows;
+    renderCentres(document.getElementById('allCentres'), list, st.region === ALL ? 'All centres' : `Centres in ${st.region}`);
+  }
+}
+
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(draw, 150); });
+showPage((location.hash || '').slice(1) || 'dashboard', false);
+</script>
+</div>
+</body>
+</html>
